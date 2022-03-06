@@ -96,7 +96,7 @@ class EnedisDatabase:
     def __init__(self, api):
         """Init db."""
         self.api = api
-        self.con = sqlite3.connect("config/enedis-gateway.db", timeout=10)
+        self.con = sqlite3.connect("/config/enedis-gateway.db", timeout=10)
         self.cur = self.con.cursor()
         self.init_database()
 
