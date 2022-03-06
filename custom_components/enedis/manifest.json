@@ -1,0 +1,15 @@
+{
+  "domain": "enedis",
+  "name": "Enedis",
+  "config_flow": true,
+  "documentation": "https://github.com/cyr-ius/hass-enedis",
+  "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "after_dependencies": ["recorder"],
+  "codeowners": ["@cyr-ius"],
+  "version": "0.1"
+}

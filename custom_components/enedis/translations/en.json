@@ -1,0 +1,33 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Register Enedis gateway account",
+                "data": {
+                    "pdl": "PDL",
+                    "token": "Enedis Gateway Token"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+        },
+        "abort": {
+            "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Enedis options",
+                "description": "Please select options to fetch datas",
+                "data": {
+                    "production_daily": "Production daily",
+                    "production_detail": "Production detail",
+                    "consumption_detail": "Consumption detail"
+                }
+            }
+        }
+    }
+}
