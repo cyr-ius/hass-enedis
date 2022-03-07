@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import ENERGY_KILO_WATT_HOUR
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import COORDINATOR, DOMAIN
+from .const import COORDINATOR, DOMAIN, CONF_PDL, CONF_CONSUMPTION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,38 +18,51 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the sensors."""
     datas = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = datas[COORDINATOR]
-    entity = PowerSensor(coordinator)
+    pdl = datas[CONF_PDL]
+    entity = PowerSensor(coordinator, pdl)
     async_add_entities([entity], True)
 
 
 class PowerSensor(CoordinatorEntity, SensorEntity):
-    """Get Max power."""
+    """Sensor return power."""
 
     _attr_device_class = DEVICE_CLASS_ENERGY
     _attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
     _attr_state_class = STATE_CLASS_TOTAL_INCREASING
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator, pdl):
         """Initialize the sensor."""
         self.coordinator = coordinator
-        self.pdl = self.coordinator.data["pdl"]
+        self.pdl = pdl
 
     @property
     def unique_id(self):
         """Unique_id."""
-        return f"{self.pdl}_max_power"
+        return f"{self.pdl}_consumption_sum"
 
     @property
     def name(self):
         """Unique_id."""
-        return f"Total consumption power ({self.pdl})"
+        return f"Consumption summary ({self.pdl})"
 
     @property
     def native_value(self):
         """Max power."""
-        return float(self.coordinator.data.get("total_power"))
+        return float(self.coordinator.data.get(CONF_CONSUMPTION).get("consumption_sum"))
 
     @property
     def device_info(self):
         """Return the device info."""
         return {"identifiers": {(DOMAIN, self.pdl)}}
+
+    @property
+    def extra_state_attributes(self):
+        """Extra attributes."""
+        attributes = {
+            "offpeak hours": self.coordinator.data["contracts"].get("offpeak_hours"),
+            "last activation date": self.coordinator.data["contracts"].get(
+                "last_activation_date"
+            ),
+            "last tariff changedate": self.coordinator.data["contracts"].get("last_distribution_tariff_change_date"),
+        }
+        return attributes

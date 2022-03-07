@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -14,22 +14,17 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_CONSUMPTION,
+    CONF_CONSUMPTION_DETAIL,
     CONF_PDL,
+    CONF_PRODUCTION,
+    CONF_PRODUCTION_DETAIL,
     COORDINATOR,
     DOMAIN,
     PLATFORMS,
     UNDO_LISTENER,
-    CONF_PRODUCTION_DETAIL,
-    CONF_PRODUCTION,
-    CONF_CONSUMPTION_DETAIL,
 )
-from .enedisgateway import (
-    EnedisException,
-    EnedisGateway,
-    LimitException,
-    URL,
-    MANUFACTURER,
-)
+from .enedisgateway import MANUFACTURER, URL, EnedisException, EnedisGateway
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
 
@@ -46,23 +41,13 @@ async def async_setup_entry(hass, config_entry):
     hass.data.setdefault(DOMAIN, {})
     pdl = config_entry.data.get(CONF_PDL)
     session = async_create_clientsession(hass)
+    db = hass.config.path("enedis-gateway.db")
 
-    """Collect data in database."""
-    collector = EnedisDataInsertDBCoordinator(hass, config_entry, session)
-    await collector.async_refresh()
-
-    informations = {}
-    try:
-        informations.update(await collector.api.async_get_contracts())
-        informations.update(await collector.api.async_get_addresses())
-    except LimitException:
-        pass
-    except EnedisException as error:
-        _LOGGER.error(error)
-        return False
-
-    coordinator = EnedisDataUpdateCoordinator(hass, config_entry, session)
+    coordinator = EnedisDataUpdateCoordinator(hass, config_entry, session, db)
     await coordinator.async_config_entry_first_refresh()
+
+    if coordinator.data is None:
+        return False
 
     undo_listener = config_entry.add_update_listener(_async_update_listener)
 
@@ -79,7 +64,7 @@ async def async_setup_entry(hass, config_entry):
         name=f"Linky ({pdl})",
         configuration_url=URL,
         manufacturer=MANUFACTURER,
-        model="9kVA",
+        model=coordinator.data["contracts"].get("subscribed_power"),
         suggested_area="Garage",
     )
 
@@ -105,52 +90,54 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-class EnedisDataInsertDBCoordinator(DataUpdateCoordinator):
+class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     """Define an object to fetch datas."""
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, session) -> None:
+    def __init__(
+        self, hass: HomeAssistant, config_entry: ConfigEntry, session, db
+    ) -> None:
         """Class to manage fetching data API."""
         self.config = config_entry.data
         self.options = config_entry.options
         self.api = EnedisGateway(
-            pdl=self.config[CONF_PDL], token=self.config[CONF_TOKEN], session=session
+            pdl=self.config[CONF_PDL],
+            token=self.config[CONF_TOKEN],
+            session=session,
+            db=db,
         )
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=timedelta(hours=1))
 
     async def _async_update_data(self) -> dict:
         """Update database every hours."""
+        start = (datetime.now() + timedelta(days=-365)).strftime("%Y-%m-%d")
+        end = datetime.now().strftime("%Y-%m-%d")
         try:
-            await self.api.db.async_update()
+            contracts = await self.api.async_get_contract_by_pdl()
+            consumption = await self.api.async_get_sum(
+                service="consumption", start=start, end=end
+            )
+            fetch_datas = {"contracts": contracts, CONF_CONSUMPTION: consumption}
 
             if self.options.get(CONF_CONSUMPTION_DETAIL):
-                await self.api.db.async_update_detail()
+                consumption_detail = await self.api.async_get_detail(
+                    service="consumption", start=start, end=end
+                )
+                fetch_datas.update({CONF_CONSUMPTION_DETAIL: consumption_detail})
+
             if self.options.get(CONF_PRODUCTION):
-                await self.api.db.async_update(data_type="production")
+                production = await self.api.async_get_sum(
+                    service="production", start=start, end=end
+                )
+                fetch_datas.update({CONF_PRODUCTION: production})
+
             if self.options.get(CONF_PRODUCTION_DETAIL):
-                await self.api.db.async_update_detail(data_type="production")
+                production_detail = await self.api.async_get_detail(
+                    service="production", start=start, end=end
+                )
+                fetch_datas.update({CONF_PRODUCTION_DETAIL: production_detail})
 
-        except (EnedisException, LimitException) as error:
-            raise UpdateFailed(error) from error
-        return {}
-
-
-class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
-    """Define an object to fetch datas."""
-
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, session) -> None:
-        """Class to manage fetching data API."""
-        self.config = config_entry.data
-        self.api = EnedisGateway(
-            pdl=self.config[CONF_PDL], token=self.config[CONF_TOKEN], session=session
-        )
-        super().__init__(
-            hass, _LOGGER, name=DOMAIN, update_interval=timedelta(minutes=1)
-        )
-
-    async def _async_update_data(self) -> dict:
-        try:
-            datas = await self.api.db.async_get_sum(self.config[CONF_PDL])
-            _LOGGER.debug(datas)
-            return datas
         except EnedisException as error:
             raise UpdateFailed(error) from error
+
+        _LOGGER.debug(fetch_datas)
+        return fetch_datas
