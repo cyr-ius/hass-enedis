@@ -7,6 +7,7 @@ import requests
 from requests.exceptions import RequestException
 from sqlalchemy import create_engine
 
+
 URL = "https://enedisgateway.tech"
 API_URL = f"{URL}/api"
 MANUFACTURER = "Enedis"
@@ -38,7 +39,7 @@ class EnedisGateway:
             response = await resp.json()
             if "error" in response:
                 raise EnedisException(response.get("description"))
-            if "tag" in response and response["tag"] == "limit_reached":
+            if "tag" in response and response["tag"] in ["limit_reached", "enedis_return_ko"]:
                 _LOGGER.warning(response.get("description"))
             return response
         except RequestException as error:
@@ -52,7 +53,7 @@ class EnedisGateway:
     async def async_get_addresses(self):
         """Get addresses."""
         addresses = await self.db.async_get_addresses(self.pdl)
-        if addresses is None:
+        if addresses is None or len(addresses) == 0:
             payload = {"type": "addresses", "usage_point_id": str(self.pdl)}
             addresses = await self._async_make_request(payload)
             await self.db.async_update_addresses(self.pdl, addresses)
@@ -61,7 +62,7 @@ class EnedisGateway:
     async def async_get_contracts(self):
         """Get contracts."""
         contracts = await self.db.async_get_contracts(self.pdl)
-        if contracts is None:
+        if contracts is None or len(contracts) == 0:
             payload = {"type": "contracts", "usage_point_id": str(self.pdl)}
             contracts = await self._async_make_request(payload)
             await self.db.async_update_contracts(self.pdl, contracts)
@@ -88,7 +89,7 @@ class EnedisGateway:
         measurements = await self._async_make_request(payload)
         await self.db.async_update(self.pdl, measurements)
         measurements = await self.db.async_get_sum(self.pdl, service, start, end)
-        return {f"{service}_sum": int(measurements) / 1000}
+        return measurements
 
     async def async_get_detail(self, service, start, end):
         """Fetch datas."""
@@ -100,8 +101,8 @@ class EnedisGateway:
         }
         measurements = await self._async_make_request(payload)
         await self.db.async_update(self.pdl, measurements, True)
-        measurements = await self.db.async_get(self.pdl, service, start, end, service)
-        return {f"{service}_detail": measurements}
+        measurements = await self.db.async_get(self.pdl, service, start, end)
+        return measurements
 
     async def async_get_contract_by_pdl(self):
         """Return all."""
@@ -130,9 +131,9 @@ class EnedisDatabase:
 
     def init_database(self):
         """Initialize database."""
-        cur = self.con.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        query_result = cur.fetchall()
-        if len(query_result) > 0:
+        result = self.con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        records = result.fetchall()
+        if len(records) > 0:
             return
 
         """ADDRESSES"""
@@ -193,31 +194,31 @@ class EnedisDatabase:
         """Get contracts."""
         query = f"SELECT json FROM contracts WHERE pdl = '{pdl}'"
         result = self.con.execute(query)
-        fetch_data = result.fetchone()
-        if fetch_data and len(fetch_data):
-            return json.loads(fetch_data[0])
-        return {}
+        rows = result.fetchone()
+        if rows is None:
+            return {}
+        return json.loads(rows[0])
 
     async def async_get_addresses(self, pdl):
         """Get addresses."""
         query = f"SELECT json FROM addresses WHERE pdl = '{pdl}'"
         result = self.con.execute(query)
-        fetch_data = result.fetchone()
-        if fetch_data and len(fetch_data):
-            return json.loads(fetch_data[0])
-        return {}
+        rows = result.fetchone()
+        if rows is None:
+            return {}
+        return json.loads(rows[0])
 
     async def async_get_sum(self, pdl, service, start=None, end=None):
         """Get summary power."""
         table = f"{service}_daily"
-        query = f"SELECT sum(value) FROM {table} WHERE pdl == '{pdl}' ORDER BY date;"
+        query = f"SELECT sum(value) as summary FROM {table} WHERE pdl == '{pdl}' ORDER BY date;"
         if start:
-            query = f"SELECT sum(value) FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
+            query = f"SELECT sum(value) as {service}_summary FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
         cur = self.con.execute(query)
-        fetch_data = cur.fetchone()
-        if fetch_data and len(fetch_data):
-            return fetch_data[0]
-        return 0
+        rows = cur.fetchone()
+        if rows is None or len(rows) == 0:
+            return 0
+        return dict(zip(rows.keys(), rows))
 
     async def async_get(self, pdl, service, start=None, end=None):
         """Get power detailed."""
@@ -226,10 +227,10 @@ class EnedisDatabase:
         if start:
             query = f"SELECT value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
         cur = self.con.execute(query)
-        fetch_data = cur.fetchall()
-        if fetch_data and len(fetch_data):
-            return fetch_data[0]
-        return
+        rows = cur.fetchall()
+        if len(rows) == 0:
+            return {}
+        return dict(zip(rows.keys(), rows))
 
     async def async_update_contracts(self, pdl, contracts):
         """Update contracts."""

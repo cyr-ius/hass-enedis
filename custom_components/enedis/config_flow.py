@@ -8,6 +8,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import (
+    CONF_CONSUMPTION,
     CONF_CONSUMPTION_DETAIL,
     CONF_PDL,
     CONF_PRODUCTION,
@@ -35,6 +36,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         errors = {}
+        options = {CONF_CONSUMPTION: True}
         if user_input is not None:
             try:
                 await self.async_set_unique_id(user_input[CONF_PDL])
@@ -45,7 +47,9 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                     session=async_create_clientsession(self.hass),
                 )
                 await api.async_get_identity()
-                return self.async_create_entry(title=DOMAIN, data=user_input)
+                return self.async_create_entry(
+                    title=DOMAIN, data=user_input, options=options
+                )
             except EnedisException:
                 errors["base"] = "cannot_connect"
 
@@ -69,16 +73,20 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         options_schema = vol.Schema(
             {
                 vol.Optional(
-                    CONF_PRODUCTION,
-                    default=self.config_entry.options.get(CONF_PRODUCTION),
-                ): bool,
-                vol.Optional(
-                    CONF_PRODUCTION_DETAIL,
-                    default=self.config_entry.options.get(CONF_PRODUCTION_DETAIL),
+                    CONF_CONSUMPTION,
+                    default=self.config_entry.options.get(CONF_CONSUMPTION, True),
                 ): bool,
                 vol.Optional(
                     CONF_CONSUMPTION_DETAIL,
-                    default=self.config_entry.options.get(CONF_CONSUMPTION_DETAIL),
+                    default=self.config_entry.options.get(CONF_CONSUMPTION_DETAIL, False),
+                ): bool,
+                vol.Optional(
+                    CONF_PRODUCTION,
+                    default=self.config_entry.options.get(CONF_PRODUCTION, False),
+                ): bool,
+                vol.Optional(
+                    CONF_PRODUCTION_DETAIL,
+                    default=self.config_entry.options.get(CONF_PRODUCTION_DETAIL, False),
                 ): bool,
             },
         )

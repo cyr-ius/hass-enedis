@@ -19,8 +19,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     datas = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = datas[COORDINATOR]
     pdl = datas[CONF_PDL]
-    entity = PowerSensor(coordinator, pdl)
-    async_add_entities([entity], True)
+    entities = []
+    if config_entry.options.get(CONF_CONSUMPTION) is True:
+        entities.append(PowerSensor(coordinator, pdl))
+    async_add_entities(entities, True)
 
 
 class PowerSensor(CoordinatorEntity, SensorEntity):
@@ -38,7 +40,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def unique_id(self):
         """Unique_id."""
-        return f"{self.pdl}_consumption_sum"
+        return f"{self.pdl}_consumption_summary"
 
     @property
     def name(self):
@@ -48,7 +50,8 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Max power."""
-        return float(self.coordinator.data.get(CONF_CONSUMPTION).get("consumption_sum"))
+        value = int(self.coordinator.data.get(CONF_CONSUMPTION).get("consumption_summary")) / 1000
+        return float(value)
 
     @property
     def device_info(self):

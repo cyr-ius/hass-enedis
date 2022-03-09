@@ -109,14 +109,17 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         """Update database every hours."""
-        start = (datetime.now() + timedelta(days=-365)).strftime("%Y-%m-%d")
+        start = (datetime.now() + timedelta(days=-7)).strftime("%Y-%m-%d")
         end = datetime.now().strftime("%Y-%m-%d")
         try:
             contracts = await self.api.async_get_contract_by_pdl()
-            consumption = await self.api.async_get_sum(
-                service="consumption", start=start, end=end
-            )
-            fetch_datas = {"contracts": contracts, CONF_CONSUMPTION: consumption}
+            fetch_datas = {"contracts": contracts}
+
+            if self.options.get(CONF_CONSUMPTION, True):
+                consumption = await self.api.async_get_sum(
+                    service="consumption", start=start, end=end
+                )
+                fetch_datas.update({CONF_CONSUMPTION: consumption})
 
             if self.options.get(CONF_CONSUMPTION_DETAIL):
                 consumption_detail = await self.api.async_get_detail(
