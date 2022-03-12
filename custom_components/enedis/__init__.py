@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -24,9 +24,10 @@ from .const import (
     PLATFORMS,
     UNDO_LISTENER,
 )
-from .enedisgateway import MANUFACTURER, URL, EnedisException, EnedisGateway
+from .enedisgateway import MANUFACTURER, URL, EnedisException, Enedis
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
+SCAN_INTERVAL = timedelta(hours=1)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,48 +100,29 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         """Class to manage fetching data API."""
         self.config = config_entry.data
         self.options = config_entry.options
-        self.api = EnedisGateway(
+        self.pdl = self.config[CONF_PDL]
+        self.enedis = Enedis(
             pdl=self.config[CONF_PDL],
             token=self.config[CONF_TOKEN],
-            session=session,
             db=db,
+            session=session,
         )
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=timedelta(hours=1))
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
     async def _async_update_data(self) -> dict:
         """Update database every hours."""
-        start = (datetime.now() + timedelta(days=-7)).strftime("%Y-%m-%d")
-        end = datetime.now().strftime("%Y-%m-%d")
         try:
-            contracts = await self.api.async_get_contract_by_pdl()
-            fetch_datas = {"contracts": contracts}
+            consumption = self.options.get(CONF_CONSUMPTION, True)
+            consumption_detail = self.options.get(CONF_CONSUMPTION_DETAIL, False)
 
-            if self.options.get(CONF_CONSUMPTION, True):
-                consumption = await self.api.async_get_sum(
-                    service="consumption", start=start, end=end
-                )
-                fetch_datas.update({CONF_CONSUMPTION: consumption})
+            production = self.options.get(CONF_PRODUCTION, False)
+            production_detail = self.options.get(CONF_PRODUCTION_DETAIL, False)
 
-            if self.options.get(CONF_CONSUMPTION_DETAIL):
-                consumption_detail = await self.api.async_get_detail(
-                    service="consumption", start=start, end=end
-                )
-                fetch_datas.update({CONF_CONSUMPTION_DETAIL: consumption_detail})
-
-            if self.options.get(CONF_PRODUCTION):
-                production = await self.api.async_get_sum(
-                    service="production", start=start, end=end
-                )
-                fetch_datas.update({CONF_PRODUCTION: production})
-
-            if self.options.get(CONF_PRODUCTION_DETAIL):
-                production_detail = await self.api.async_get_detail(
-                    service="production", start=start, end=end
-                )
-                fetch_datas.update({CONF_PRODUCTION_DETAIL: production_detail})
+            return await self.enedis.async_update(
+                self.pdl,
+                (consumption, consumption_detail),
+                (production, production_detail),
+            )
 
         except EnedisException as error:
             raise UpdateFailed(error) from error
-
-        _LOGGER.debug(fetch_datas)
-        return fetch_datas

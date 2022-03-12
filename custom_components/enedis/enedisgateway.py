@@ -1,12 +1,13 @@
 """Class for Enedis Gateway (http://enedisgateway.tech)."""
-import logging
-import re
 
 import json
+import logging
+import re
+from datetime import timedelta, date, datetime
+
 import requests
 from requests.exceptions import RequestException
 from sqlalchemy import create_engine
-
 
 URL = "https://enedisgateway.tech"
 API_URL = f"{URL}/api"
@@ -22,24 +23,27 @@ _LOGGER = logging.getLogger(__name__)
 class EnedisGateway:
     """Class for Enedis Gateway API."""
 
-    def __init__(self, pdl, token, session=None, db=None):
+    def __init__(self, pdl, token, session=None):
         """Init."""
         self.pdl = str(pdl)
         self.token = token
         self.session = session if session else requests.Session()
-        self.db = EnedisDatabase(self, db)
 
     async def _async_make_request(self, payload):
         """Request session."""
         headers = {"Authorization": self.token, "Content-Type": "application/json"}
         try:
+            _LOGGER.debug(f"Make request {payload}")
             resp = await self.session.request(
                 method="POST", url=API_URL, json=payload, headers=headers
             )
             response = await resp.json()
             if "error" in response:
                 raise EnedisException(response.get("description"))
-            if "tag" in response and response["tag"] in ["limit_reached", "enedis_return_ko"]:
+            if "tag" in response and response["tag"] in [
+                "limit_reached",
+                "enedis_return_ko",
+            ]:
                 _LOGGER.warning(response.get("description"))
             return response
         except RequestException as error:
@@ -52,21 +56,13 @@ class EnedisGateway:
 
     async def async_get_addresses(self):
         """Get addresses."""
-        addresses = await self.db.async_get_addresses(self.pdl)
-        if addresses is None or len(addresses) == 0:
-            payload = {"type": "addresses", "usage_point_id": str(self.pdl)}
-            addresses = await self._async_make_request(payload)
-            await self.db.async_update_addresses(self.pdl, addresses)
-        return addresses
+        payload = {"type": "addresses", "usage_point_id": str(self.pdl)}
+        return await self._async_make_request(payload)
 
     async def async_get_contracts(self):
         """Get contracts."""
-        contracts = await self.db.async_get_contracts(self.pdl)
-        if contracts is None or len(contracts) == 0:
-            payload = {"type": "contracts", "usage_point_id": str(self.pdl)}
-            contracts = await self._async_make_request(payload)
-            await self.db.async_update_contracts(self.pdl, contracts)
-        return contracts
+        payload = {"type": "contracts", "usage_point_id": str(self.pdl)}
+        return await self._async_make_request(payload)
 
     async def async_get_max_power(self, start, end):
         """Get consumption max power."""
@@ -78,117 +74,165 @@ class EnedisGateway:
         }
         return await self._async_make_request(payload)
 
-    async def async_get_sum(self, service, start, end):
-        """Get power."""
+    async def async_get_datas(self, service, start, end, detail=False):
+        """Get datas."""
         payload = {
             "type": f"daily_{service}",
             "usage_point_id": f"{self.pdl}",
             "start": f"{start}",
             "end": f"{end}",
         }
-        measurements = await self._async_make_request(payload)
-        await self.db.async_update(self.pdl, measurements)
-        measurements = await self.db.async_get_sum(self.pdl, service, start, end)
-        return measurements
+        if detail:
+            payload = {
+                "type": f"{service}_load_curve",
+                "usage_point_id": f"{self.pdl}",
+                "start": f"{start}",
+                "end": f"{end}",
+            }
 
-    async def async_get_detail(self, service, start, end):
-        """Fetch datas."""
-        payload = {
-            "type": f"{service}_load_curve",
-            "usage_point_id": f"{self.pdl}",
-            "start": f"{start}",
-            "end": f"{end}",
-        }
-        measurements = await self._async_make_request(payload)
-        await self.db.async_update(self.pdl, measurements, True)
-        measurements = await self.db.async_get(self.pdl, service, start, end)
-        return measurements
-
-    async def async_get_contract_by_pdl(self):
-        """Return all."""
-        datas = {}
-        contracts = await self.async_get_contracts()
-        for contract in contracts.get("customer", {}).get("usage_points"):
-            if contract.get("usage_point", {}).get("usage_point_id") == self.pdl:
-                datas.update(contract.get("contracts"))
-
-        return datas
+        return await self._async_make_request(payload)
 
 
 class EnedisException(Exception):
     """Enedis exception."""
 
 
-class EnedisDatabase:
+class Enedis:
     """Enedis Gateway Database."""
 
-    def __init__(self, api, db):
+    def __init__(self, pdl, token, db, session=None):
         """Init db."""
-        self.api = api
         self.db = db
         self.con = create_engine(f"sqlite:///{self.db}")
         self.init_database()
+        self.api = EnedisGateway(pdl, token, session)
 
     def init_database(self):
         """Initialize database."""
+        tables = []
         result = self.con.execute("SELECT name FROM sqlite_master WHERE type='table'")
         records = result.fetchall()
         if len(records) > 0:
-            return
+            tables = [row[0] for row in records]
 
-        """ADDRESSES"""
-        self.con.execute(
-            """CREATE TABLE addresses (pdl TEXT PRIMARY KEY,json json NOT NULL)"""
-        )
-        self.con.execute("""CREATE UNIQUE INDEX idx_pdl_addresses ON addresses (pdl)""")
+        if "addresses" not in tables:
+            _LOGGER.debug("Create addresses table")
+            self.con.execute(
+                """CREATE TABLE addresses (pdl TEXT PRIMARY KEY,json json NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_pdl_addresses ON addresses (pdl)"""
+            )
 
-        """CONTRACT"""
-        self.con.execute(
-            """CREATE TABLE contracts (pdl TEXT PRIMARY KEY, json json NOT NULL)"""
-        )
-        self.con.execute("""CREATE UNIQUE INDEX idx_pdl_contracts ON contracts (pdl)""")
+        if "contracts" not in tables:
+            _LOGGER.debug("Create contracts table")
+            self.con.execute(
+                """CREATE TABLE contracts (pdl TEXT PRIMARY KEY, json json NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_pdl_contracts ON contracts (pdl)"""
+            )
 
-        """CONSUMPTION DAILY."""
-        self.con.execute(
-            """CREATE TABLE consumption_daily (pdl TEXT NOT NULL,date DATE NOT NULL,value INTEGER NOT NULL)"""
-        )
-        self.con.execute(
-            """CREATE UNIQUE INDEX idx_date_consumption ON consumption_daily (date)"""
-        )
+        if "consumption_daily" not in tables:
+            _LOGGER.debug("Create consumption_daily table")
+            self.con.execute(
+                """CREATE TABLE consumption_daily (pdl TEXT NOT NULL,date DATE NOT NULL,value INTEGER NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_date_consumption ON consumption_daily (date)"""
+            )
 
-        """CONSUMPTION DAILY DETAIL."""
-        self.con.execute(
-            """CREATE TABLE consumption_detail (
-                            pdl TEXT NOT NULL,
-                            date DATETIME NOT NULL,
-                            value INTEGER NOT NULL,
-                            interval INTEGER NOT NULL,
-                            measure_type TEXT NOT NULL)"""
-        )
-        self.con.execute(
-            """CREATE UNIQUE INDEX idx_date_consumption_detail ON consumption_detail (date)"""
-        )
+        if "consumption_detail" not in tables:
+            _LOGGER.debug("Create consumption_detail table")
+            self.con.execute(
+                """CREATE TABLE consumption_detail (
+                                pdl TEXT NOT NULL,
+                                date DATETIME NOT NULL,
+                                value INTEGER NOT NULL,
+                                interval INTEGER NOT NULL,
+                                measure_type TEXT NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_date_consumption_detail ON consumption_detail (date)"""
+            )
 
-        """PRODUCTION DAILY."""
-        self.con.execute(
-            """CREATE TABLE production_daily (pdl TEXT NOT NULL,date DATE NOT NULL,value INTEGER NOT NULL)"""
-        )
-        self.con.execute(
-            """CREATE UNIQUE INDEX idx_date_production ON production_daily (date)"""
-        )
+        if "production_daily" not in tables:
+            _LOGGER.debug("Create production_daily table")
+            self.con.execute(
+                """CREATE TABLE production_daily (pdl TEXT NOT NULL,date DATE NOT NULL,value INTEGER NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_date_production ON production_daily (date)"""
+            )
 
-        """PRODUCTION DAILY DETAIL."""
-        self.con.execute(
-            """CREATE TABLE production_detail (
-                            pdl TEXT NOT NULL,
-                            date DATETIME NOT NULL,
-                            value INTEGER NOT NULL,
-                            interval INTEGER NOT NULL,
-                            measure_type TEXT NOT NULL)"""
-        )
-        self.con.execute(
-            """CREATE UNIQUE INDEX idx_date_production_detail ON production_detail (date)"""
-        )
+        if "production_detail" not in tables:
+            _LOGGER.debug("Create production_detail table")
+            self.con.execute(
+                """CREATE TABLE production_detail (
+                                pdl TEXT NOT NULL,
+                                date DATETIME NOT NULL,
+                                value INTEGER NOT NULL,
+                                interval INTEGER NOT NULL,
+                                measure_type TEXT NOT NULL)"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_date_production_detail ON production_detail (date)"""
+            )
+
+        if "service_summary" not in tables:
+            _LOGGER.debug("Create service_summary table")
+            self.con.execute(
+                """CREATE TABLE service_summary (pdl TEXT NOT NULL,service TEXT NOT NULL,value INTEGER NOT NULL,last_date DATE NOT NULL, PRIMARY KEY (pdl, service))"""
+            )
+            self.con.execute(
+                """CREATE UNIQUE INDEX idx_pdl_service__service_summary ON service_summary (pdl,service)"""
+            )
+
+    async def async_get_identity(self):
+        """Get identity."""
+        return await self.api.async_get_identity()
+
+    async def async_get_information_by_pdl(
+        self,
+        pdl,
+        consumption=(False, False),
+        production=(False, False),
+    ):
+        """Get all informations by pdl."""
+        start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end = datetime.now().strftime("%Y-%m-%d")
+        informations = {
+            "contracts": await self.async_get_contract_by_pdl(pdl),
+            "addresses": await self.async_get_addresses_by_pdl(pdl),
+            "consumption": {},
+            "production": {},
+        }
+        if consumption[0]:
+            informations["consumption"].update(
+                {
+                    "weekly": await self.async_get_weekly(pdl, "consumption"),
+                    "summary": await self.async_get_summary(pdl, "consumption"),
+                }
+            )
+
+        if consumption[1]:
+            informations["consumption"].update(
+                {"detail": await self.async_get(pdl, "consumption", start, end)}
+            )
+
+        if production[0]:
+            informations["production"].update(
+                {
+                    "weekly": await self.async_get_weekly(pdl, "production"),
+                    "summary": await self.async_get_summary(pdl, "production"),
+                }
+            )
+        if production[1]:
+            informations["production"].update(
+                {"detail": await self.async_get(pdl, "production", start, end)}
+            )
+
+        return informations
 
     async def async_get_contracts(self, pdl):
         """Get contracts."""
@@ -196,8 +240,19 @@ class EnedisDatabase:
         result = self.con.execute(query)
         rows = result.fetchone()
         if rows is None:
-            return {}
+            contracts = await self.api.async_get_contracts()
+            await self._async_update_contracts(contracts)
+            return json.dumps(contracts)
         return json.loads(rows[0])
+
+    async def async_get_contract_by_pdl(self, pdl):
+        """Return all."""
+        datas = {}
+        contracts = await self.async_get_contracts(pdl)
+        for contract in contracts.get("customer", {}).get("usage_points"):
+            if contract.get("usage_point", {}).get("usage_point_id") == pdl:
+                datas.update(contract.get("contracts"))
+        return datas
 
     async def async_get_addresses(self, pdl):
         """Get addresses."""
@@ -205,45 +260,93 @@ class EnedisDatabase:
         result = self.con.execute(query)
         rows = result.fetchone()
         if rows is None:
-            return {}
+            addresses = await self.api.async_get_addresses()
+            await self._async_update_addresses(pdl, addresses)(addresses)
+            return json.dumps(addresses)
         return json.loads(rows[0])
 
-    async def async_get_sum(self, pdl, service, start=None, end=None):
-        """Get summary power."""
-        table = f"{service}_daily"
-        query = f"SELECT sum(value) as summary FROM {table} WHERE pdl == '{pdl}' ORDER BY date;"
-        if start:
-            query = f"SELECT sum(value) as {service}_summary FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
-        cur = self.con.execute(query)
-        rows = cur.fetchone()
-        if rows is None or len(rows) == 0:
-            return 0
-        return dict(zip(rows.keys(), rows))
+    async def async_get_addresses_by_pdl(self, pdl):
+        """Return all."""
+        datas = {}
+        addresses = await self.async_get_addresses(pdl)
+        for addresses in addresses.get("customer", {}).get("usage_points"):
+            if addresses.get("usage_point", {}).get("usage_point_id") == pdl:
+                datas.update(addresses.get("usage_point"))
+        return datas
 
     async def async_get(self, pdl, service, start=None, end=None):
         """Get power detailed."""
         table = f"{service}_detail"
         query = f"SELECT value FROM {table} WHERE pdl == '{pdl}' ORDER BY DATE DESC;"
         if start:
-            query = f"SELECT value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
+            query = f"SELECT date, value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
         cur = self.con.execute(query)
         rows = cur.fetchall()
-        if len(rows) == 0:
+        if rows is None or len(rows) == 0:
             return {}
         return dict(zip(rows.keys(), rows))
 
-    async def async_update_contracts(self, pdl, contracts):
+    async def async_get_weekly(self, pdl, service):
+        """Get weekly power."""
+        table = f"{service}_daily"
+        today = date.today()
+        lastweek = today - timedelta(days=7)
+        query = f"SELECT date, value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{lastweek}' AND '{today}' ORDER BY DATE DESC;"
+        cur = self.con.execute(query)
+        rows = cur.fetchall()
+        if rows is None or len(rows) == 0:
+            return {}
+        return [dict(zip(row.keys(), row)) for row in rows]
+
+    async def async_get_summary(self, pdl, service):
+        """Fetch data summary."""
+        summary = 0
+        query = f"SELECT value  FROM service_summary WHERE pdl == '{pdl}' AND service == '{service}';"
+        row = self.con.execute(query).fetchone()
+        if row is not None:
+            (summary,) = row
+        return 0 if summary is None else summary
+
+    async def _async_update_summary(self, pdl, service, table):
+        """Set summary."""
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        last_date = sum_value = summary = max_date = None
+        query = f"SELECT last_date, value FROM service_summary WHERE pdl == '{pdl}' AND service == '{service}';"
+        row = self.con.execute(query).fetchone()
+        if row is not None:
+            last_date, sum_value = row
+        last_date = today - timedelta(years=1) if last_date is None else last_date
+        sum_value = 0 if sum_value is None else sum_value
+
+        query = f"SELECT SUM(value), MAX(date) FROM {table} WHERE pdl == '{pdl}' AND date > '{last_date}' AND date <= '{today}'"
+        row = self.con.execute(query).fetchone()
+        if row is not None:
+            (summary, max_date) = row
+        max_date = yesterday.strftime("%Y-%m-%d") if max_date is None else max_date
+        sum_value = int(sum_value) if summary is None else int(sum_value) + int(summary)
+
+        _LOGGER.debug(
+            f"Insert or Update summary {service} at {max_date} with {sum_value}"
+        )
+        query = "INSERT OR REPLACE INTO service_summary VALUES (?, ?, ?, ?)"
+        self.con.execute(query, [pdl, service, sum_value, max_date])
+
+    async def _async_update_contracts(self, pdl, contracts):
         """Update contracts."""
+        _LOGGER.debug("Insert or Update contracts")
         query = "INSERT OR REPLACE INTO contracts VALUES (?,?)"
         self.con.execute(query, [pdl, json.dumps(contracts)])
 
-    async def async_update_addresses(self, pdl, addresses):
+    async def _async_update_addresses(self, pdl, addresses):
         """Update addresses."""
+        _LOGGER.debug("Insert or Update addresses")
         query = "INSERT OR REPLACE INTO addresses VALUES (?,?)"
         self.con.execute(query, [pdl, json.dumps(addresses)])
 
-    async def async_update(self, service, measurements, detail=False):
+    async def _async_update_measurements(self, service, measurements, detail=False):
         """Update power."""
+        _LOGGER.debug(f"Call update {service} , detail is {detail}")
         if (meter_reading := measurements.get("meter_reading")) and (
             interval_reading := measurements.get("meter_reading").get(
                 "interval_reading"
@@ -276,3 +379,41 @@ class EnedisDatabase:
                     self.con.execute(
                         config_query, [pdl, interval.get("date"), interval.get("value")]
                     )
+
+            """Update summary table."""
+            await self._async_update_summary(pdl, service, table)
+
+    async def async_update(
+        self,
+        pdl,
+        consumption=(False, False),
+        production=(False, False),
+    ):
+        """Update database."""
+        start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end = datetime.now().strftime("%Y-%m-%d")
+
+        if consumption[0]:
+            _LOGGER.debug(f"Update consumption from {start} to {end}")
+            measurements = await self.api.async_get_datas("consumption", start, end)
+            await self._async_update_measurements("consumption", measurements)
+            if consumption[1]:
+                _LOGGER.debug(f"Update detail consumption from {start} to {end})")
+                msrmts = await self.api.async_get_datas("consumption", start, end, True)
+                await self._async_update_measurements("consumption", msrmts, True)
+
+        if production[0]:
+            _LOGGER.debug(f"Update production from {start} to {end}")
+            measurements = await self.api.async_get_datas("production", start, end)
+            await self._async_update_measurements("production", measurements)
+            if production[1]:
+                _LOGGER.debug(f"Update detail production from {start} to {end})")
+                msrmts = await self.api.async_get_datas("production", start, end, True)
+                await self._async_update_measurements("production", msrmts, True)
+
+        information = await self.async_get_information_by_pdl(
+            pdl, consumption, production
+        )
+        _LOGGER.debug(f"Get informations: {information}")
+
+        return information

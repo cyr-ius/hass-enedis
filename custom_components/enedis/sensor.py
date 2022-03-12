@@ -22,7 +22,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     entities = []
     if config_entry.options.get(CONF_CONSUMPTION) is True:
         entities.append(PowerSensor(coordinator, pdl))
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class PowerSensor(CoordinatorEntity, SensorEntity):
@@ -50,7 +50,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Max power."""
-        value = int(self.coordinator.data.get(CONF_CONSUMPTION).get("consumption_summary")) / 1000
+        value = int(self.coordinator.data.get("consumption", {}).get("summary")) / 1000
         return float(value)
 
     @property
@@ -61,11 +61,19 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Extra attributes."""
+        weekly = {
+            day["date"]: day["value"]
+            for day in self.coordinator.data.get("consumption", {}).get("weekly")
+        }
+
         attributes = {
             "offpeak hours": self.coordinator.data["contracts"].get("offpeak_hours"),
             "last activation date": self.coordinator.data["contracts"].get(
                 "last_activation_date"
             ),
-            "last tariff changedate": self.coordinator.data["contracts"].get("last_distribution_tariff_change_date"),
+            "last tariff changedate": self.coordinator.data["contracts"].get(
+                "last_distribution_tariff_change_date"
+            ),
+            "weekly": weekly,
         }
         return attributes
