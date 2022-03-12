@@ -119,7 +119,6 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             production_detail = self.options.get(CONF_PRODUCTION_DETAIL, False)
 
             return await self.enedis.async_update(
-                self.pdl,
                 (consumption, consumption_detail),
                 (production, production_detail),
             )

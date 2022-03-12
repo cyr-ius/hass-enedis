@@ -106,6 +106,7 @@ class Enedis:
         self.con = create_engine(f"sqlite:///{self.db}")
         self.init_database()
         self.api = EnedisGateway(pdl, token, session)
+        self.pdl = pdl
 
     def init_database(self):
         """Initialize database."""
@@ -316,7 +317,7 @@ class Enedis:
         row = self.con.execute(query).fetchone()
         if row is not None:
             last_date, sum_value = row
-        last_date = today - timedelta(years=1) if last_date is None else last_date
+        last_date = today - timedelta(days=365) if last_date is None else last_date
         sum_value = 0 if sum_value is None else sum_value
 
         query = f"SELECT SUM(value), MAX(date) FROM {table} WHERE pdl == '{pdl}' AND date > '{last_date}' AND date <= '{today}'"
@@ -347,6 +348,11 @@ class Enedis:
     async def _async_update_measurements(self, service, measurements, detail=False):
         """Update power."""
         _LOGGER.debug(f"Call update {service} , detail is {detail}")
+
+        table = PRODUCTION if service == "production" else CONSUMPTION
+        if detail:
+            table = PRODUCTION_DETAIL if service == "production" else CONSUMPTION_DETAIL
+
         if (meter_reading := measurements.get("meter_reading")) and (
             interval_reading := measurements.get("meter_reading").get(
                 "interval_reading"
@@ -354,9 +360,6 @@ class Enedis:
         ):
             pdl = meter_reading.get("usage_point_id")
             if detail:
-                table = (
-                    PRODUCTION_DETAIL if service == "production" else CONSUMPTION_DETAIL
-                )
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?, ?, ?)"
                 for interval in interval_reading:
                     interval_length = re.findall(
@@ -373,19 +376,17 @@ class Enedis:
                         ],
                     )
             else:
-                table = PRODUCTION if service == "production" else CONSUMPTION
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?)"
                 for interval in interval_reading:
                     self.con.execute(
                         config_query, [pdl, interval.get("date"), interval.get("value")]
                     )
 
-            """Update summary table."""
-            await self._async_update_summary(pdl, service, table)
+        """Update summary table."""
+        await self._async_update_summary(self.pdl, service, table)
 
     async def async_update(
         self,
-        pdl,
         consumption=(False, False),
         production=(False, False),
     ):
@@ -412,7 +413,7 @@ class Enedis:
                 await self._async_update_measurements("production", msrmts, True)
 
         information = await self.async_get_information_by_pdl(
-            pdl, consumption, production
+            self.pdl, consumption, production
         )
         _LOGGER.debug(f"Get informations: {information}")
 
