@@ -348,7 +348,7 @@ class Enedis:
     async def _async_update_measurements(self, service, measurements, detail=False):
         """Update power."""
         _LOGGER.debug(f"Call update {service} , detail is {detail}")
-
+        upi = None
         table = PRODUCTION if service == "production" else CONSUMPTION
         if detail:
             table = PRODUCTION_DETAIL if service == "production" else CONSUMPTION_DETAIL
@@ -358,7 +358,7 @@ class Enedis:
                 "interval_reading"
             )
         ):
-            pdl = meter_reading.get("usage_point_id")
+            upi = meter_reading.get("usage_point_id")
             if detail:
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?, ?, ?)"
                 for interval in interval_reading:
@@ -368,7 +368,7 @@ class Enedis:
                     self.con.execute(
                         config_query,
                         [
-                            pdl,
+                            upi,
                             interval.get("date"),
                             interval.get("value"),
                             interval_length,
@@ -379,11 +379,12 @@ class Enedis:
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?)"
                 for interval in interval_reading:
                     self.con.execute(
-                        config_query, [pdl, interval.get("date"), interval.get("value")]
+                        config_query, [upi, interval.get("date"), interval.get("value")]
                     )
 
         """Update summary table."""
-        await self._async_update_summary(self.pdl, service, table)
+        pdl = upi or self.pdl
+        await self._async_update_summary(pdl, service, table)
 
     async def async_update(
         self,
