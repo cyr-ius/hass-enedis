@@ -41,10 +41,8 @@ async def async_setup_entry(hass, config_entry):
     """Set up Enedis as config entry."""
     hass.data.setdefault(DOMAIN, {})
     pdl = config_entry.data.get(CONF_PDL)
-    session = async_create_clientsession(hass)
-    db = hass.config.path("enedis-gateway.db")
 
-    coordinator = EnedisDataUpdateCoordinator(hass, config_entry, session, db)
+    coordinator = EnedisDataUpdateCoordinator(hass, config_entry)
     await coordinator.async_config_entry_first_refresh()
 
     if coordinator.data is None:
@@ -94,23 +92,22 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     """Define an object to fetch datas."""
 
-    def __init__(
-        self, hass: HomeAssistant, config_entry: ConfigEntry, session, db
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
+        self.session = async_create_clientsession(hass)
         self.config = config_entry.data
         self.options = config_entry.options
         self.pdl = self.config[CONF_PDL]
         self.enedis = Enedis(
             pdl=self.config[CONF_PDL],
             token=self.config[CONF_TOKEN],
-            db=db,
-            session=session,
+            db=hass.config.path("enedis-gateway.db"),
+            session=self.session,
         )
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
     async def _async_update_data(self) -> dict:
-        """Update database every hours."""
+        """Update and fetch datas."""
         try:
             consumption = self.options.get(CONF_CONSUMPTION, True)
             consumption_detail = self.options.get(CONF_CONSUMPTION_DETAIL, False)
