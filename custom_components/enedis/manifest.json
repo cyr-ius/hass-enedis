@@ -11,5 +11,5 @@
   "dependencies": [],
   "after_dependencies": ["recorder"],
   "codeowners": ["@cyr-ius"],
-  "version": "0.7"
+  "version": "0.8"
 }

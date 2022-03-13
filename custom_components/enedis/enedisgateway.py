@@ -302,8 +302,9 @@ class Enedis:
             (summary,) = row
         return 0 if summary is None else summary
 
-    async def _async_update_summary(self, pdl, service, table):
+    async def _async_update_summary(self, pdl, service):
         """Set summary."""
+        table = f"{service}_daily"
         today = date.today()
         yesterday = today - timedelta(days=1)
         last_date = sum_value = summary = max_date = None
@@ -342,18 +343,16 @@ class Enedis:
     async def _async_update_measurements(self, service, measurements, detail=False):
         """Update power."""
         _LOGGER.debug(f"Call update {service} , detail is {detail}")
-        upi = None
-        table = PRODUCTION if service == "production" else CONSUMPTION
-        if detail:
-            table = PRODUCTION_DETAIL if service == "production" else CONSUMPTION_DETAIL
-
         if (meter_reading := measurements.get("meter_reading")) and (
             interval_reading := measurements.get("meter_reading").get(
                 "interval_reading"
             )
         ):
-            upi = meter_reading.get("usage_point_id")
+            pdl = meter_reading.get("usage_point_id")
             if detail:
+                table = (
+                    PRODUCTION_DETAIL if service == "production" else CONSUMPTION_DETAIL
+                )
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?, ?, ?)"
                 for interval in interval_reading:
                     interval_length = re.findall(
@@ -362,7 +361,7 @@ class Enedis:
                     self.con.execute(
                         config_query,
                         [
-                            upi,
+                            pdl,
                             interval.get("date"),
                             interval.get("value"),
                             interval_length,
@@ -370,15 +369,12 @@ class Enedis:
                         ],
                     )
             else:
+                table = PRODUCTION if service == "production" else CONSUMPTION
                 config_query = f"INSERT OR REPLACE INTO {table} VALUES (?, ?, ?)"
                 for interval in interval_reading:
                     self.con.execute(
-                        config_query, [upi, interval.get("date"), interval.get("value")]
+                        config_query, [pdl, interval.get("date"), interval.get("value")]
                     )
-
-        """Update summary table."""
-        pdl = upi or self.pdl
-        await self._async_update_summary(pdl, service, table)
 
     async def async_update(
         self,
@@ -387,38 +383,48 @@ class Enedis:
     ):
         """Update database."""
         start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        startd = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
         end = datetime.now().strftime("%Y-%m-%d")
 
-        if consumption[0]:
-            _LOGGER.debug(f"Update consumption from {start} to {end}")
-            try:
-                measurements = await self.api.async_get_datas("consumption", start, end)
-                await self._async_update_measurements("consumption", measurements)
-                if consumption[1]:
-                    start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
-                    _LOGGER.debug(f"Update detail consumption from {start} to {end})")
-                    msrmts = await self.api.async_get_datas(
-                        "consumption", start, end, True
-                    )
-                    await self._async_update_measurements("consumption", msrmts, True)
-            except EnedisGatewayException:
-                pass
+        try:
+            if consumption[0]:
+                try:
+                    rslt = await self.api.async_get_datas("consumption", start, end)
+                    await self._async_update_measurements("consumption", rslt)
+                except EnedisGatewayException:
+                    pass
 
-        if production[0]:
-            _LOGGER.debug(f"Update production from {start} to {end}")
-            try:
-                measurements = await self.api.async_get_datas("production", start, end)
-                await self._async_update_measurements("production", measurements)
-                if production[1]:
-                    start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
-                    _LOGGER.debug(f"Update detail production from {start} to {end})")
-                    msrmts = await self.api.async_get_datas(
-                        "production", start, end, True
-                    )
-                    await self._async_update_measurements("production", msrmts, True)
+                await self._async_update_summary(self.pdl, "consumption")
 
-            except EnedisGatewayException:
-                pass
+            if consumption[1]:
+                try:
+                    rslt = await self.api.async_get_datas(
+                        "consumption", startd, end, True
+                    )
+                    await self._async_update_measurements("consumption", rslt, True)
+                except EnedisGatewayException:
+                    pass
+
+            if production[0]:
+                try:
+                    rslt = await self.api.async_get_datas("production", start, end)
+                    await self._async_update_measurements("production", rslt)
+                except EnedisGatewayException:
+                    pass
+
+                await self._async_update_summary(self.pdl, "production")
+
+            if production[1]:
+                try:
+                    rslt = await self.api.async_get_datas(
+                        "production", startd, end, True
+                    )
+                    await self._async_update_measurements("production", rslt, True)
+                except EnedisGatewayException:
+                    pass
+
+        except EnedisDatabaseException as error:
+            _LOGGER.error(error)
 
         """Fetch datas."""
         try:
