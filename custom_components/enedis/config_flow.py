@@ -15,7 +15,7 @@ from .const import (
     CONF_PRODUCTION_DETAIL,
     DOMAIN,
 )
-from .enedisgateway import EnedisException, EnedisGateway
+from .enedisgateway import EnedisGateway, EnedisGatewayException
 
 DATA_SCHEMA = vol.Schema({vol.Required(CONF_PDL): str, vol.Required(CONF_TOKEN): str})
 
@@ -50,7 +50,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=DOMAIN, data=user_input, options=options
                 )
-            except EnedisException:
+            except EnedisGatewayException:
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
@@ -78,7 +78,9 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                 ): bool,
                 vol.Optional(
                     CONF_CONSUMPTION_DETAIL,
-                    default=self.config_entry.options.get(CONF_CONSUMPTION_DETAIL, False),
+                    default=self.config_entry.options.get(
+                        CONF_CONSUMPTION_DETAIL, False
+                    ),
                 ): bool,
                 vol.Optional(
                     CONF_PRODUCTION,
@@ -86,7 +88,9 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                 ): bool,
                 vol.Optional(
                     CONF_PRODUCTION_DETAIL,
-                    default=self.config_entry.options.get(CONF_PRODUCTION_DETAIL, False),
+                    default=self.config_entry.options.get(
+                        CONF_PRODUCTION_DETAIL, False
+                    ),
                 ): bool,
             },
         )

@@ -39,15 +39,15 @@ class EnedisGateway:
             )
             response = await resp.json()
             if "error" in response:
-                raise EnedisException(response.get("description"))
+                raise EnedisGatewayException(response.get("description"))
             if "tag" in response and response["tag"] in [
                 "limit_reached",
                 "enedis_return_ko",
             ]:
-                _LOGGER.warning(response.get("description"))
+                raise EnedisGatewayException(response.get("description"))
             return response
         except RequestException as error:
-            raise EnedisException("Request failed") from error
+            raise EnedisGatewayException("Request failed") from error
 
     async def async_get_identity(self):
         """Get identity."""
@@ -91,10 +91,6 @@ class EnedisGateway:
             }
 
         return await self._async_make_request(payload)
-
-
-class EnedisException(Exception):
-    """Enedis exception."""
 
 
 class Enedis:
@@ -281,11 +277,10 @@ class Enedis:
         query = f"SELECT value FROM {table} WHERE pdl == '{pdl}' ORDER BY DATE DESC;"
         if start:
             query = f"SELECT date, value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{start}' AND '{end}' ORDER BY DATE DESC;"
-        cur = self.con.execute(query)
-        rows = cur.fetchall()
+        rows = self.con.execute(query).fetchall()
         if rows is None or len(rows) == 0:
-            return {}
-        return dict(zip(rows.keys(), rows))
+            return []
+        return [dict(zip(row.keys(), row)) for row in rows]
 
     async def async_get_weekly(self, pdl, service):
         """Get weekly power."""
@@ -293,10 +288,9 @@ class Enedis:
         today = date.today()
         lastweek = today - timedelta(days=7)
         query = f"SELECT date, value FROM {table} WHERE pdl == '{pdl}' AND date BETWEEN '{lastweek}' AND '{today}' ORDER BY DATE DESC;"
-        cur = self.con.execute(query)
-        rows = cur.fetchall()
+        rows = self.con.execute(query).fetchall()
         if rows is None or len(rows) == 0:
-            return {}
+            return []
         return [dict(zip(row.keys(), row)) for row in rows]
 
     async def async_get_summary(self, pdl, service):
@@ -397,25 +391,59 @@ class Enedis:
 
         if consumption[0]:
             _LOGGER.debug(f"Update consumption from {start} to {end}")
-            measurements = await self.api.async_get_datas("consumption", start, end)
-            await self._async_update_measurements("consumption", measurements)
-            if consumption[1]:
-                _LOGGER.debug(f"Update detail consumption from {start} to {end})")
-                msrmts = await self.api.async_get_datas("consumption", start, end, True)
-                await self._async_update_measurements("consumption", msrmts, True)
+            try:
+                measurements = await self.api.async_get_datas("consumption", start, end)
+                await self._async_update_measurements("consumption", measurements)
+                if consumption[1]:
+                    start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+                    _LOGGER.debug(f"Update detail consumption from {start} to {end})")
+                    msrmts = await self.api.async_get_datas(
+                        "consumption", start, end, True
+                    )
+                    await self._async_update_measurements("consumption", msrmts, True)
+            except EnedisGatewayException:
+                pass
 
         if production[0]:
             _LOGGER.debug(f"Update production from {start} to {end}")
-            measurements = await self.api.async_get_datas("production", start, end)
-            await self._async_update_measurements("production", measurements)
-            if production[1]:
-                _LOGGER.debug(f"Update detail production from {start} to {end})")
-                msrmts = await self.api.async_get_datas("production", start, end, True)
-                await self._async_update_measurements("production", msrmts, True)
+            try:
+                measurements = await self.api.async_get_datas("production", start, end)
+                await self._async_update_measurements("production", measurements)
+                if production[1]:
+                    start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+                    _LOGGER.debug(f"Update detail production from {start} to {end})")
+                    msrmts = await self.api.async_get_datas(
+                        "production", start, end, True
+                    )
+                    await self._async_update_measurements("production", msrmts, True)
 
-        information = await self.async_get_information_by_pdl(
-            self.pdl, consumption, production
-        )
-        _LOGGER.debug(f"Get informations: {information}")
+            except EnedisGatewayException:
+                pass
 
-        return information
+        """Fetch datas."""
+        try:
+            return await self.async_get_information_by_pdl(
+                self.pdl, consumption, production
+            )
+        except EnedisGatewayException:
+            pass
+        except EnedisDatabaseException as error:
+            raise EnedisException(error)
+
+
+class EnedisException(Exception):
+    """Enedis exception."""
+
+
+class EnedisGatewayException(EnedisException):
+    """Enedis exception."""
+
+    def __init__(self, message):
+        """Init."""
+        self.message = message
+        super().__init__(self.message)
+        _LOGGER.error(message)
+
+
+class EnedisDatabaseException(EnedisException):
+    """Enedis database exception."""
