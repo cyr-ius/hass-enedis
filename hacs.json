@@ -3,5 +3,5 @@
   "country": "FR",
   "domains": ["sensor"],
   "homeassistant": "0.109",
-  "render_readme": false
+  "render_readme": true
 }
