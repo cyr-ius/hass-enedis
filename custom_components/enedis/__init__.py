@@ -28,7 +28,6 @@ from .const import (
     CONF_PRODUCTION_DETAIL,
     COORDINATOR,
     DOMAIN,
-    JSON,
     PLATFORMS,
     UNDO_LISTENER,
 )
