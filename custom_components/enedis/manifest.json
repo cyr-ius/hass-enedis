@@ -11,6 +11,6 @@
   "dependencies": [],
   "after_dependencies": ["recorder"],
   "codeowners": ["@cyr-ius"],
-  "version": "0.8",
+  "version": "0.9",
   "iot_class": "cloud_polling"
 }

@@ -2,14 +2,18 @@
 import logging
 
 from homeassistant.components.sensor import (
-    SensorEntity,
     DEVICE_CLASS_ENERGY,
     STATE_CLASS_TOTAL_INCREASING,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.const import ENERGY_KILO_WATT_HOUR
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import COORDINATOR, DOMAIN, CONF_PDL, CONF_CONSUMPTION
+from .const import CONF_CONSUMPTION, CONF_PDL, COORDINATOR, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,7 +54,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Max power."""
-        value = int(self.coordinator.data.get("consumption", {}).get("summary")) / 1000
+        value = int(self.coordinator.data.get("consumption"))
         return float(value)
 
     @property
@@ -61,11 +65,6 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Extra attributes."""
-        weekly = {
-            day["date"]: day["value"]
-            for day in self.coordinator.data.get("consumption", {}).get("weekly")
-        }
-
         attributes = {
             "offpeak hours": self.coordinator.data["contracts"].get("offpeak_hours"),
             "last activation date": self.coordinator.data["contracts"].get(
@@ -74,6 +73,5 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
             "last tariff changedate": self.coordinator.data["contracts"].get(
                 "last_distribution_tariff_change_date"
             ),
-            "weekly": weekly,
         }
         return attributes

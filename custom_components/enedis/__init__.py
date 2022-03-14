@@ -2,16 +2,23 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import voluptuous as vol
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    get_last_statistics,
+    statistics_during_period,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_TOKEN
+from homeassistant.const import CONF_TOKEN, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_CONSUMPTION,
@@ -21,10 +28,11 @@ from .const import (
     CONF_PRODUCTION_DETAIL,
     COORDINATOR,
     DOMAIN,
+    JSON,
     PLATFORMS,
     UNDO_LISTENER,
 )
-from .enedisgateway import MANUFACTURER, URL, EnedisException, Enedis
+from .enedisgateway import MANUFACTURER, URL, EnedisException, EnedisGateway
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
 SCAN_INTERVAL = timedelta(hours=1)
@@ -94,31 +102,86 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
         self.session = async_create_clientsession(hass)
         self.config = config_entry.data
         self.options = config_entry.options
         self.pdl = self.config[CONF_PDL]
-        self.enedis = Enedis(
+        self.enedis = EnedisGateway(
             pdl=self.config[CONF_PDL],
             token=self.config[CONF_TOKEN],
-            db=hass.config.path("enedis-gateway.db"),
             session=self.session,
         )
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
+        self.statistics = {}
 
-    async def _async_update_data(self) -> dict:
+    async def _async_update_data(self):
+        """Update data via API."""
+        contracts = await self.enedis.async_get_contract_by_pdl()
+        consumption = await self._insert_statistics("consumption")
+        return {"contracts": contracts, "consumption": consumption}
+
+    async def _insert_statistics(self, service) -> dict:
         """Update and fetch datas."""
-        try:
-            consumption = self.options.get(CONF_CONSUMPTION, True)
-            consumption_detail = self.options.get(CONF_CONSUMPTION_DETAIL, False)
+        start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end = datetime.now().strftime("%Y-%m-%d")
+        datas  = await self.enedis.async_get_datas("consumption", start, end)
+        hourly_consumption_data = datas.get("meter_reading", {}).get("interval_reading")
 
-            production = self.options.get(CONF_PRODUCTION, False)
-            production_detail = self.options.get(CONF_PRODUCTION_DETAIL, False)
+        unit = ENERGY_KILO_WATT_HOUR
 
-            return await self.enedis.async_update(
-                (consumption, consumption_detail),
-                (production, production_detail),
+        statistic_id = f"{DOMAIN}:{service}_summary_{self.pdl}"
+        last_stats = await self.hass.async_add_executor_job(
+            get_last_statistics, self.hass, 1, statistic_id, True
+        )
+        if not last_stats:
+            _sum = 0
+            last_stats_time = None
+        else:
+            start = dt_util.parse_datetime(
+                hourly_consumption_data[0]["date"]
+            ) - timedelta(hours=1)
+            start = dt_util.parse_datetime(
+                hourly_consumption_data[len(hourly_consumption_data) - 1]["date"]
+            ).astimezone() - timedelta(hours=1)
+            stat = await self.hass.async_add_executor_job(
+                statistics_during_period,
+                self.hass,
+                start,
+                None,
+                [statistic_id],
+                "hour",
+                True,
+            )
+            _sum = stat[statistic_id][1]["sum"]
+            last_stats_time = stat[statistic_id][1]["start"]
+
+        statistics = []
+        for data in hourly_consumption_data:
+            if (value := data.get("value")) is None:
+                continue
+
+            start = dt_util.parse_datetime(data["date"]).astimezone()
+            if last_stats_time is not None and start <= last_stats_time:
+                continue
+
+            _sum += int(value) /1000
+            statistics.append(
+                StatisticData(
+                    start=start,
+                    state=int(value) /1000 ,
+                    sum=_sum,
+                )
             )
 
-        except EnedisException as error:
-            raise UpdateFailed(error) from error
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=f"Total {service} ({self.pdl})",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_of_measurement=unit,
+        )
+
+        async_add_external_statistics(self.hass, metadata, statistics)
+
+        return _sum
