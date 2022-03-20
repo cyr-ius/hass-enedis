@@ -23,10 +23,16 @@
                 "title": "Enedis options",
                 "description": "Please select options to fetch datas",
                 "data": {
-                    "consumption_daily": "Consumption daily",
-                    "consumption_detail": "Consumption detail",
-                    "production_daily": "Production daily",
-                    "production_detail": "Production detail"
+                    "energy": "Mode",
+                    "detail": "Detail (recommanded to compute offpeak hours)"
+                }
+            },
+            "offpeak": {
+                "title": "Enedis options",
+                "description": "Please indicate the prices for off-peak and peak hours (optional)",
+                "data": {
+                    "offpeak_hours": "Off-peak hours price",
+                    "peak_hours": "Peak hours price"
                 }
             }
         }
