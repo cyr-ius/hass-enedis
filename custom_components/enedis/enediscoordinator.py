@@ -34,7 +34,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.pdl = config_entry.data[CONF_PDL]
         self.power = config_entry.options[CONF_SOURCE].lower()
-        self.hp = config_entry.options[HP]
+        self.hp = config_entry.options.get(HP)
         self.hc = config_entry.options.get(HC)
         self.detail = config_entry.options.get(CONF_DETAIL, False)
         self.start = (
@@ -190,12 +190,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         async_add_external_statistics(self.hass, metadata, statistics)
 
-        await self._async_insert_costs(
-            _costs,
-            f"{DOMAIN}:{self.pdl}_{self.power}_offpeak_cost",
-            f"Off-Peak Hours {self.power} ({self.pdl})",
-            self.hc,
-        )
+        if self.hc:
+            await self._async_insert_costs(
+                _costs,
+                f"{DOMAIN}:{self.pdl}_{self.power}_offpeak_cost",
+                f"Off-Peak Hours {self.power} ({self.pdl})",
+                self.hc,
+            )
 
         return _sum
 
@@ -284,11 +285,12 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         async_add_external_statistics(self.hass, metadata, statistics)
 
-        await self._async_insert_costs(
-            _costs,
-            f"{DOMAIN}:{self.pdl}_{self.power}_peak_cost",
-            f"Peak Hours {self.power} ({self.pdl})",
-            self.hp,
-        )
+        if self.hp:
+            await self._async_insert_costs(
+                _costs,
+                f"{DOMAIN}:{self.pdl}_{self.power}_peak_cost",
+                f"Peak Hours {self.power} ({self.pdl})",
+                self.hp,
+            )
 
         return _sum
