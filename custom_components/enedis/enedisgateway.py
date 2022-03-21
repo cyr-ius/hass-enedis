@@ -3,6 +3,9 @@
 
 import logging
 import re
+import datetime
+from datetime import datetime as dt
+
 import requests
 from requests.exceptions import RequestException
 
@@ -32,7 +35,7 @@ class EnedisGateway:
         self.token = token
         self.session = session if session else requests.Session()
         self.has_offpeak = False
-        self.offpeak = []
+        self.offpeaks = []
 
     async def _async_make_request(self, payload):
         """Request session."""
@@ -54,13 +57,24 @@ class EnedisGateway:
         except RequestException as error:
             raise EnedisException("Request failed") from error
 
-    def has_offpeak(self):
+    def hass_offpeak(self):
+        """Has offpeak hours."""
+        return len(self.offpeak) > 0
+
+    def check_offpeak(self, start: datetime):
         """Return offpeak status."""
-        return self.has_offpeak
+        if self.hass_offpeak:
+            start_time = start.time()
+            for range in self.offpeaks:
+                starting = dt.strptime(range[0], "%HH%M").time()
+                ending = dt.strptime(range[1], "%HH%M").time()
+                if start_time > starting and start_time <= ending:
+                    return True
+        return False
 
     def get_offpeak(self):
         """Return offpeak detail."""
-        return self.offpeak
+        return self.offpeaks
 
     async def async_get_identity(self):
         """Get identity."""
@@ -95,12 +109,7 @@ class EnedisGateway:
                 datas.update(contract.get("contracts"))
 
         if offpeak_hours := datas.get("offpeak_hours"):
-            rslt = re.findall("HC \\((.*)\\)", offpeak_hours)
-            if len(rslt) == 1:
-                self.has_offpeak = True
-                for ranges in rslt[0].split(";"):
-                    start, end = ranges.split("-")
-                    self.offpeak.append((start, end))
+            self.offpeaks = re.findall("(?:(\\w+)-(\\w+))+", offpeak_hours)
         return datas
 
     async def async_get_max_power(self, start, end):
@@ -128,7 +137,6 @@ class EnedisGateway:
                 "start": f"{start}",
                 "end": f"{end}",
             }
-
         return await self._async_make_request(payload)
 
 
