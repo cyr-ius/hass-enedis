@@ -1,6 +1,6 @@
 """Data Update Coordinator."""
 from __future__ import annotations
-
+import re
 import logging
 from datetime import datetime, timedelta
 
@@ -53,7 +53,6 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             contracts
         ) == 0:
             try:
-                _LOGGER.debug("fetch contracts information")
                 contracts = await self.enedis.async_get_contract_by_pdl()
             except EnedisException:
                 _LOGGER.warning("Contract data is not complete")
@@ -105,19 +104,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         )
         async_add_external_statistics(self.hass, metadata, costs)
 
-    def _offpeak_costs(self, start):
-        """Compute cost for offpeak hour."""
-        start_time = start.time()
-        if self.enedis.has_offpeak:
-            for range in self.enedis.get_offpeak():
-                starting = datetime.strptime(range[0], "%HH%M").time()
-                ending = datetime.strptime(range[1], "%HH%M").time()
-                if start_time > starting and start_time <= ending:
-                    return True
-        return False
-
     async def _async_offpeak_statistics(self, hourly_data, unit) -> dict:
         if self.detail is False:
+            _LOGGER.debug("Off-peak hours are not eligible")
             return
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_offpeak"
         last_stats = await self.hass.async_add_executor_job(
@@ -125,58 +114,54 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         if not last_stats:
-            _sum = 0
+            energy_sum = 0
             last_stats_time = None
         else:
-            _sum = last_stats[statistic_id][0]["sum"]
+            energy_sum = last_stats[statistic_id][0]["sum"]
             last_stats_time = dt_util.parse_datetime(
                 last_stats[statistic_id][0]["start"]
             )
-
-        _LOGGER.debug(f"Valeur déjà en base {last_stats_time}")
+        _LOGGER.debug(f"Last date in database  {last_stats_time}")
 
         statistics = []
-        val_memory = i = 0
+        statistics_cost = []
         ref_date = None
-        _costs = []
-
+        last_value = 0
         for data in hourly_data:
-            i += 1
-
             if (value := int(data.get("value"))) is None:
                 continue
 
             start = dt_util.parse_datetime(data["date"]).replace(tzinfo=dt_util.UTC)
-
             if last_stats_time is not None and start <= last_stats_time + timedelta(
                 days=1
             ):
                 continue
 
             if start.time() > datetime.min.time():
-                if self._offpeak_costs(start):
+                if self.enedis.check_offpeak(start):
                     if ref_date is None:
                         ref_date = datetime.combine(
                             start.date(), datetime.min.time()
                         ).replace(tzinfo=dt_util.UTC)
-                    val_memory += value * 0.5
+                    interval = float(self.weighted_interval(data.get("interval_length")))
+                    _LOGGER.debug(f"Value {value} - Interval {interval}")
+                    last_value += value * interval
                 continue
             else:
-                if val_memory > 0:
-                    _costs.append((ref_date, round(val_memory / 1000, 2)))
-                    _sum += val_memory
+                if last_value > 0:
+                    value_kwh = round(last_value / 1000, 2)
+                    statistics_cost.append((ref_date, value_kwh))
+                    energy_sum += value_kwh
 
                     _LOGGER.debug(
-                        f"Offpeak Hours : {round(val_memory / 1000, 2)} at {ref_date} - sum is {round(_sum / 1000, 2)}"
+                        f"Offpeak Hours: {value_kwh} at {ref_date}, sum is {round(energy_sum, 2)}"
                     )
                     statistics.append(
                         StatisticData(
-                            start=ref_date,
-                            state=round(val_memory / 1000, 2),
-                            sum=round(_sum / 1000, 2),
+                            start=ref_date, state=value_kwh, sum=round(energy_sum, 2)
                         )
                     )
-                    val_memory = 0
+                    last_value = 0
                     ref_date = None
 
         metadata = StatisticMetaData(
@@ -192,13 +177,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         if self.hc:
             await self._async_insert_costs(
-                _costs,
+                statistics_cost,
                 f"{DOMAIN}:{self.pdl}_{self.power}_offpeak_cost",
-                f"Off-Peak Hours {self.power} ({self.pdl})",
+                f"Price of off-peak hours {self.power} ({self.pdl})",
                 self.hc,
             )
 
-        return _sum
+        return energy_sum
 
     async def _async_peak_statistics(self, hourly_data, unit) -> dict:
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
@@ -207,72 +192,60 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         if not last_stats:
-            _sum = 0
+            energy_sum = 0
             last_stats_time = None
         else:
-            _sum = last_stats[statistic_id][0]["sum"]
+            energy_sum = last_stats[statistic_id][0]["sum"]
             last_stats_time = dt_util.parse_datetime(
                 last_stats[statistic_id][0]["start"]
             )
-
-        _LOGGER.debug(f"Valeur déjà en base {last_stats_time}")
+        _LOGGER.debug(f"Last date in database  {last_stats_time}")
 
         statistics = []
-        val_memory = i = 0
+        statistics_cost = []
+        last_value = 0
         ref_date = None
-        _costs = []
-
         for data in hourly_data:
-            i += 1
-
             if (value := int(data.get("value"))) is None:
                 continue
 
             start = dt_util.parse_datetime(data["date"]).replace(tzinfo=dt_util.UTC)
-
             if last_stats_time is not None and start <= last_stats_time + timedelta(
                 days=1
             ):
                 continue
 
             if start.time() > datetime.min.time():
-                if not self._offpeak_costs(start):
+                if not self.enedis.check_offpeak(start):
                     if ref_date is None:
                         ref_date = datetime.combine(
                             start.date(), datetime.min.time()
                         ).replace(tzinfo=dt_util.UTC)
-                    val_memory += value * 0.5
+                    interval = float(self.weighted_interval(data.get("interval_length")))
+                    _LOGGER.debug(f"Value {value} - Interval {interval}")
+                    last_value += value * interval
                 continue
             else:
-                if val_memory > 0:
-                    _costs.append((ref_date, round(val_memory / 1000, 2)))
-                    _sum += val_memory
-
-                    _LOGGER.debug(
-                        f"Peak Hours : {round(val_memory / 1000, 2)} at {ref_date} - sum is {round(_sum / 1000, 2)}"
-                    )
-                    statistics.append(
-                        StatisticData(
-                            start=ref_date,
-                            state=round(val_memory / 1000, 2),
-                            sum=round(_sum / 1000, 2),
-                        )
-                    )
-                    val_memory = 0
+                date_refer = value_kwh = None
+                if last_value > 0:
+                    value_kwh = round(last_value / 1000, 2)
+                    date_refer = ref_date
+                    last_value = 0
                     ref_date = None
                 else:
-                    _costs.append((start, round(value / 1000, 2)))
-                    _sum += value
-                    _LOGGER.debug(
-                        f"Peak Hours : {round(value / 1000, 2)} at {start} - sum is {round(_sum / 1000, 2)}"
+                    value_kwh = round(value / 1000, 2)
+                    date_refer = start
+
+                statistics_cost.append((date_refer, value_kwh))
+                energy_sum += value_kwh
+                _LOGGER.debug(
+                    f"Peak Hours : {value_kwh} at {date_refer}, sum is {round(energy_sum, 2)}"
+                )
+                statistics.append(
+                    StatisticData(
+                        start=date_refer, state=value_kwh, sum=round(energy_sum, 2)
                     )
-                    statistics.append(
-                        StatisticData(
-                            start=start,
-                            state=round(value / 1000, 2),
-                            sum=round(_sum / 1000, 2),
-                        )
-                    )
+                )
 
         metadata = StatisticMetaData(
             has_mean=False,
@@ -287,10 +260,18 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         if self.hp:
             await self._async_insert_costs(
-                _costs,
+                statistics_cost,
                 f"{DOMAIN}:{self.pdl}_{self.power}_peak_cost",
-                f"Peak Hours {self.power} ({self.pdl})",
+                f"Price of peak hours {self.power} ({self.pdl})",
                 self.hp,
             )
 
-        return _sum
+        return energy_sum
+
+    def weighted_interval(self, interval):
+        """Compute weighted."""
+        if interval is None:
+            return 1
+        rslt = re.findall("PT([0-9]{2})M", interval)
+        if len(rslt) == 1:
+            return int(rslt[0]) / 60
