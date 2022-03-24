@@ -1,0 +1,5 @@
+# Enedis service.
+
+reload_history:
+  # Description of the service
+  description: Reload datas in statistics table.

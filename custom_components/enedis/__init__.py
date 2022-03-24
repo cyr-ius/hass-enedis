@@ -51,6 +51,13 @@ async def async_setup_entry(hass, config_entry):
 
     hass.config_entries.async_setup_platforms(config_entry, PLATFORMS)
 
+    async def async_reload_history(call) -> None:
+        await coordinator.async_load_datas_history(call)
+
+    hass.services.async_register(
+        DOMAIN, "reload_history", async_reload_history, schema=vol.Schema({})
+    )
+
     return True
 
 

@@ -9,6 +9,7 @@ from homeassistant.components.recorder.models import StatisticData, StatisticMet
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ENERGY_KILO_WATT_HOUR, CONF_SOURCE
@@ -37,18 +38,19 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hp = config_entry.options.get(HP)
         self.hc = config_entry.options.get(HC)
         self.detail = config_entry.options.get(CONF_DETAIL, False)
-        self.start = (
-            (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
-            if self.detail
-            else (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        )
-        self.end = datetime.now().strftime("%Y-%m-%d")
         self.enedis = api
         self.statistics = {}
 
     async def _async_update_data(self):
         """Update data via API."""
         unit = ENERGY_KILO_WATT_HOUR
+        start = (
+            (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+            if self.detail
+            else (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        )
+        end = datetime.now().strftime("%Y-%m-%d")
+
         if (contracts := self.statistics.get("contracts", {})) is None or len(
             contracts
         ) == 0:
@@ -59,7 +61,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         try:
             datas = await self.enedis.async_get_datas(
-                self.power, self.start, self.end, self.detail
+                self.power, start, end, self.detail
             )
             hourly_data = datas.get("meter_reading", {}).get("interval_reading", [])
         except EnedisException:
@@ -143,7 +145,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                         ref_date = datetime.combine(
                             start.date(), datetime.min.time()
                         ).replace(tzinfo=dt_util.UTC)
-                    interval = float(self.weighted_interval(data.get("interval_length")))
+                    interval = float(
+                        self.weighted_interval(data.get("interval_length"))
+                    )
                     _LOGGER.debug(f"Value {value} - Interval {interval}")
                     last_value += value * interval
                 continue
@@ -185,13 +189,16 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         return energy_sum
 
-    async def _async_peak_statistics(self, hourly_data, unit) -> dict:
-        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
+    async def _async_peak_statistics(
+        self, hourly_data, unit, force=False, statistic_id=None
+    ) -> dict:
+        if statistic_id is None:
+            statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
         last_stats = await self.hass.async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
 
-        if not last_stats:
+        if not last_stats or force is True:
             energy_sum = 0
             last_stats_time = None
         else:
@@ -221,7 +228,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                         ref_date = datetime.combine(
                             start.date(), datetime.min.time()
                         ).replace(tzinfo=dt_util.UTC)
-                    interval = float(self.weighted_interval(data.get("interval_length")))
+                    interval = float(
+                        self.weighted_interval(data.get("interval_length"))
+                    )
                     _LOGGER.debug(f"Value {value} - Interval {interval}")
                     last_value += value * interval
                 continue
@@ -258,7 +267,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         async_add_external_statistics(self.hass, metadata, statistics)
 
-        if self.hp:
+        if self.hp and force is False:
             await self._async_insert_costs(
                 statistics_cost,
                 f"{DOMAIN}:{self.pdl}_{self.power}_peak_cost",
@@ -275,3 +284,34 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         rslt = re.findall("PT([0-9]{2})M", interval)
         if len(rslt) == 1:
             return int(rslt[0]) / 60
+
+    async def async_load_datas_history(self, call):
+        """Load datas in statics table."""
+        unit = ENERGY_KILO_WATT_HOUR
+        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
+        start = (datetime.now() - timedelta(days=365)).replace(tzinfo=dt_util.UTC)
+
+        stat = await self.hass.async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            start,
+            None,
+            [statistic_id],
+            "hour",
+            True,
+        )
+        start = start.strftime("%Y-%m-%d")
+        end = (stat[statistic_id][0]["start"].date() - timedelta(days=1)).strftime(
+            "%Y-%m-%d"
+        )
+        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}"
+
+        try:
+            datas = await self.enedis.async_get_datas(
+                self.power, start, end, self.detail
+            )
+            hourly_data = datas.get("meter_reading", {}).get("interval_reading", [])
+        except EnedisException:
+            hourly_data = []
+
+        await self._async_peak_statistics(hourly_data, unit, True, statistic_id)
