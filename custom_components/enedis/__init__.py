@@ -16,7 +16,7 @@ from .enedisgateway import EnedisGateway
 from .enediscoordinator import EnedisDataUpdateCoordinator
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
-SCAN_INTERVAL = timedelta(hours=1)
+SCAN_INTERVAL = timedelta(hours=2)
 
 _LOGGER = logging.getLogger(__name__)
 
