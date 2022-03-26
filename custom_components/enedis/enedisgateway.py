@@ -43,7 +43,7 @@ class EnedisGateway:
         try:
             _LOGGER.debug(f"Make request {payload}")
             resp = await self.session.request(
-                method="POST", url=API_URL, json=payload, headers=headers
+                method="POST", url=API_URL, json=payload, headers=headers, timeout=5
             )
             response = await resp.json()
             if "error" in response:
