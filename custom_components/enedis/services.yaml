@@ -1,5 +1,5 @@
 # Enedis service.
 
 reload_history:
-  # Description of the service
-  description: Reload datas in statistics table.
+  name: Retrieve datas history
+  description: This service allows you to retrieve all the data for the last year
