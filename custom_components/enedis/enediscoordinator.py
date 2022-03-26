@@ -148,11 +148,23 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     interval = float(
                         self.weighted_interval(data.get("interval_length"))
                     )
-                    _LOGGER.debug(f"Value {value} - Interval {interval}")
+                    _LOGGER.debug(
+                        f"Offpeak Value {value} - Interval {interval} Hours {start}"
+                    )
                     last_value += value * interval
                 continue
             else:
                 if last_value > 0:
+
+                    if self.enedis.check_offpeak(start):
+                        interval = float(
+                            self.weighted_interval(data.get("interval_length"))
+                        )
+                        last_value += value * interval
+                        _LOGGER.debug(
+                            f"Offpeak Value {value} - Interval {interval} Hours {start}"
+                        )
+
                     value_kwh = round(last_value / 1000, 2)
                     statistics_cost.append((ref_date, value_kwh))
                     energy_sum += value_kwh
@@ -231,12 +243,25 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     interval = float(
                         self.weighted_interval(data.get("interval_length"))
                     )
-                    _LOGGER.debug(f"Value {value} - Interval {interval}")
+                    _LOGGER.debug(
+                        f"Peak Value {value} - Interval {interval} Hours {start}"
+                    )
                     last_value += value * interval
                 continue
             else:
                 date_refer = value_kwh = None
                 if last_value > 0:
+
+                    if not self.enedis.check_offpeak(start):
+                        interval = float(
+                            self.weighted_interval(data.get("interval_length"))
+                        )
+                        last_value += value * interval
+
+                        _LOGGER.debug(
+                            f"Peak Value {value} - Interval {interval} Hours {start}"
+                        )
+
                     value_kwh = round(last_value / 1000, 2)
                     date_refer = ref_date
                     last_value = 0
