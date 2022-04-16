@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 
 import voluptuous as vol
+from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
@@ -85,7 +86,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_insert_costs(self, statistics, statistic_id, name, price) -> dict:
         """Insert costs."""
-        last_stats = await self.hass.async_add_executor_job(
+        last_stats =  await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
         cost_sum = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
@@ -111,7 +112,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Off-peak hours are not eligible")
             return
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_offpeak"
-        last_stats = await self.hass.async_add_executor_job(
+        last_stats = await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
 
@@ -206,7 +207,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> dict:
         if statistic_id is None:
             statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
-        last_stats = await self.hass.async_add_executor_job(
+        last_stats = await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
 
@@ -316,7 +317,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
         start = (datetime.now() - timedelta(days=365)).replace(tzinfo=dt_util.UTC)
 
-        stat = await self.hass.async_add_executor_job(
+        stat = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
             start,
