@@ -22,7 +22,7 @@ from .const import CONF_DETAIL, CONF_PDL, DOMAIN
 from .enedisgateway import HC, HP, EnedisException
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
-SCAN_INTERVAL = timedelta(hours=1)
+SCAN_INTERVAL = timedelta(hours=2)
 
 _LOGGER = logging.getLogger(__name__)
 
