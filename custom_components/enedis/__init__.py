@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -12,8 +11,8 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_PDL, COORDINATOR, DOMAIN, PLATFORMS, UNDO_LISTENER
-from .enedisgateway import EnedisGateway
 from .enediscoordinator import EnedisDataUpdateCoordinator
+from .enedisgateway import EnedisGateway
 
 CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
 

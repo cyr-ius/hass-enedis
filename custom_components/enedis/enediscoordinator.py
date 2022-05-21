@@ -1,7 +1,8 @@
 """Data Update Coordinator."""
 from __future__ import annotations
-import re
+
 import logging
+import re
 from datetime import datetime, timedelta
 
 import voluptuous as vol
@@ -13,7 +14,7 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ENERGY_KILO_WATT_HOUR, CONF_SOURCE
+from homeassistant.const import CONF_SOURCE, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -86,7 +87,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_insert_costs(self, statistics, statistic_id, name, price) -> dict:
         """Insert costs."""
-        last_stats =  await get_instance(self.hass).async_add_executor_job(
+        last_stats = await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
         cost_sum = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
@@ -315,27 +316,27 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         """Load datas in statics table."""
         unit = ENERGY_KILO_WATT_HOUR
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
-        start = (datetime.now() - timedelta(days=365)).replace(tzinfo=dt_util.UTC)
+        start_stat = (datetime.now() - timedelta(days=365)).replace(tzinfo=dt_util.UTC)
 
         stat = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
-            start,
+            start_stat,
             None,
             [statistic_id],
             "hour",
             True,
         )
-        start = start.strftime("%Y-%m-%d")
-        end = (stat[statistic_id][0]["start"].date() - timedelta(days=1)).strftime(
+
+        start = (stat[statistic_id][0]["start"].date() - timedelta(days=1)).strftime(
             "%Y-%m-%d"
         )
+        end = start_stat.strftime("%Y-%m-%d")
+
         statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}"
 
         try:
-            datas = await self.enedis.async_get_datas(
-                self.power, start, end, self.detail
-            )
+            datas = await self.enedis.async_get_datas(self.power, start, end, False)
             hourly_data = datas.get("meter_reading", {}).get("interval_reading", [])
         except EnedisException:
             hourly_data = []

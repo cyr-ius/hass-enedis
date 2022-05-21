@@ -104,7 +104,7 @@ class EnedisGateway:
         """Return all."""
         datas = {}
         contracts = await self.async_get_contracts()
-        for contract in contracts.get("customer", {}).get("usage_points"):
+        for contract in contracts.get("customer", {}).get("usage_points", ""):
             if contract.get("usage_point", {}).get("usage_point_id") == self.pdl:
                 datas.update(contract.get("contracts"))
 
