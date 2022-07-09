@@ -1,4 +1,4 @@
-"""Config flow to configure Heatzy."""
+"""Config flow to configure integration."""
 import logging
 
 import voluptuous as vol

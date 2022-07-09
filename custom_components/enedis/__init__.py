@@ -8,65 +8,50 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_PDL, COORDINATOR, DOMAIN, PLATFORMS, UNDO_LISTENER
+from .const import CONF_PDL, COORDINATOR, DOMAIN, PLATFORMS, RELOAD_HISTORY
 from .enediscoordinator import EnedisDataUpdateCoordinator
 from .enedisgateway import EnedisGateway
-
-CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Enedis integration."""
-    return True
-
-
-async def async_setup_entry(hass, config_entry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Enedis as config entry."""
     hass.data.setdefault(DOMAIN, {})
-    pdl = config_entry.data.get(CONF_PDL)
-    token = config_entry.data.get(CONF_TOKEN)
-    session = async_create_clientsession(hass)
 
+    pdl = entry.data.get(CONF_PDL)
+    token = entry.data.get(CONF_TOKEN)
+
+    session = async_create_clientsession(hass)
     enedis = EnedisGateway(pdl=pdl, token=token, session=session)
 
-    coordinator = EnedisDataUpdateCoordinator(hass, config_entry, enedis)
+    coordinator = EnedisDataUpdateCoordinator(hass, entry, enedis)
     await coordinator.async_config_entry_first_refresh()
-
     if coordinator.data is None:
         return False
 
-    undo_listener = config_entry.add_update_listener(_async_update_listener)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    hass.data[DOMAIN][config_entry.entry_id] = {
-        COORDINATOR: coordinator,
-        CONF_PDL: pdl,
-        UNDO_LISTENER: undo_listener,
-    }
+    hass.data[DOMAIN][entry.entry_id] = {COORDINATOR: coordinator, CONF_PDL: pdl}
 
-    hass.config_entries.async_setup_platforms(config_entry, PLATFORMS)
+    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
 
     async def async_reload_history(call) -> None:
         await coordinator.async_load_datas_history(call)
 
     hass.services.async_register(
-        DOMAIN, "reload_history", async_reload_history, schema=vol.Schema({})
+        DOMAIN, RELOAD_HISTORY, async_reload_history, schema=vol.Schema({})
     )
 
     return True
 
 
-async def async_unload_entry(hass, config_entry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        config_entry, PLATFORMS
-    )
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN][config_entry.entry_id][UNDO_LISTENER]()
-        hass.data[DOMAIN].pop(config_entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id)
 
     return True
 

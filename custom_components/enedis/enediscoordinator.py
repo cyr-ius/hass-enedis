@@ -5,7 +5,6 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-import voluptuous as vol
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
@@ -22,7 +21,6 @@ from homeassistant.util import dt as dt_util
 from .const import CONF_DETAIL, CONF_PDL, DOMAIN
 from .enedisgateway import HC, HP, EnedisException
 
-CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): {}}, extra=vol.ALLOW_EXTRA)
 SCAN_INTERVAL = timedelta(hours=2)
 
 _LOGGER = logging.getLogger(__name__)

@@ -44,20 +44,11 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
 
     def __init__(self, coordinator, pdl, source, sensor_type):
         """Initialize the sensor."""
-        self.coordinator = coordinator
+        super().__init__(coordinator)
         self.pdl = pdl
-        self.source = source
         self.sensor_type = sensor_type
-
-    @property
-    def unique_id(self):
-        """Unique_id."""
-        return f"{self.pdl}_{self.source}_{self.sensor_type}"
-
-    @property
-    def name(self):
-        """Name."""
-        return f"{self.source} {self.sensor_type}"
+        self._attr_unique_id = f"{self.pdl}_{source}_{sensor_type}"
+        self._attr_name = f"{source} {sensor_type}"
 
     @property
     def native_value(self):
@@ -68,7 +59,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return the device info."""
-        deviceinfo = DeviceInfo(
+        return DeviceInfo(
             identifiers={(DOMAIN, self.pdl)},
             name=f"Linky ({self.pdl})",
             configuration_url=URL,
@@ -76,12 +67,11 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
             model=self.coordinator.data.get("contracts", {}).get("subscribed_power"),
             suggested_area="Garage",
         )
-        return deviceinfo
 
     @property
     def extra_state_attributes(self):
         """Extra attributes."""
-        attributes = {
+        return {
             "offpeak hours": self.coordinator.data["contracts"].get("offpeak_hours"),
             "last activation date": self.coordinator.data["contracts"].get(
                 "last_activation_date"
@@ -90,4 +80,3 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
                 "last_distribution_tariff_change_date"
             ),
         }
-        return attributes
