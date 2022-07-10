@@ -1,7 +1,6 @@
 {
   "name": "Enedis",
   "country": "FR",
-  "domains": ["sensor"],
   "homeassistant": "0.109",
   "render_readme": true
 }
