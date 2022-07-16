@@ -13,13 +13,14 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_SOURCE, ENERGY_KILO_WATT_HOUR
+from homeassistant.const import CONF_SOURCE, CONF_TOKEN, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_DETAIL, CONF_PDL, DOMAIN
-from .enedisgateway import HC, HP, EnedisException
+from .enedisgateway import HC, HP, EnedisException, EnedisGateway
 
 SCAN_INTERVAL = timedelta(hours=2)
 
@@ -29,17 +30,21 @@ _LOGGER = logging.getLogger(__name__)
 class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     """Define an object to fetch datas."""
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, api) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
         self.hass = hass
-        self.pdl = config_entry.data[CONF_PDL]
-        self.power = config_entry.options[CONF_SOURCE].lower()
-        self.hp = config_entry.options.get(HP)
-        self.hc = config_entry.options.get(HC)
-        self.detail = config_entry.options.get(CONF_DETAIL, False)
-        self.enedis = api
+        session = async_create_clientsession(hass)
+        self.pdl = entry.data[CONF_PDL]
+        token = entry.data[CONF_TOKEN]
+
+        self.power = entry.options[CONF_SOURCE].lower()
+        self.hp = entry.options.get(HP)
+        self.hc = entry.options.get(HC)
+        self.detail = entry.options.get(CONF_DETAIL, False)
+
+        self.enedis = EnedisGateway(pdl=self.pdl, token=token, session=session)
         self.statistics = {}
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
     async def _async_update_data(self):
         """Update data via API."""

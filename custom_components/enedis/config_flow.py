@@ -8,7 +8,7 @@ from homeassistant.const import CONF_TOKEN, CONF_SOURCE
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .const import CONF_PDL, DOMAIN, COORDINATOR, CONF_DETAIL
+from .const import CONF_PDL, DOMAIN, CONF_DETAIL
 from .enedisgateway import (
     EnedisGateway,
     EnedisGatewayException,
@@ -39,11 +39,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         errors = {}
-        options = {
-            CONF_SOURCE: CONSUMPTION,
-            HP: DEFAULT_HP_PRICE,
-            CONF_DETAIL: False
-        }
+        options = {CONF_SOURCE: CONSUMPTION, HP: DEFAULT_HP_PRICE, CONF_DETAIL: False}
         if user_input is not None:
             try:
                 await self.async_set_unique_id(user_input[CONF_PDL])
@@ -54,11 +50,12 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                     session=async_create_clientsession(self.hass),
                 )
                 await api.async_get_identity()
+            except EnedisGatewayException:
+                errors["base"] = "cannot_connect"
+            else:
                 return self.async_create_entry(
                     title=DOMAIN, data=user_input, options=options
                 )
-            except EnedisGatewayException:
-                errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
@@ -77,8 +74,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         """Handle a flow initialized by the user."""
         if user_input is not None:
             if (
-                self.hass.data[DOMAIN][self.config_entry.entry_id][COORDINATOR]
-                .data["contracts"]
+                self.hass.data[DOMAIN][self.config_entry.entry_id]
+                .data.get("contracts", {})
                 .get("offpeak_hours")
                 is not None
             ):
