@@ -33,16 +33,17 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
         self.hass = hass
-        session = async_create_clientsession(hass)
         self.pdl = entry.data[CONF_PDL]
-        token = entry.data[CONF_TOKEN]
-
         self.power = entry.options[CONF_SOURCE].lower()
         self.hp = entry.options.get(HP)
         self.hc = entry.options.get(HC)
         self.detail = entry.options.get(CONF_DETAIL, False)
 
-        self.enedis = EnedisGateway(pdl=self.pdl, token=token, session=session)
+        self.enedis = EnedisGateway(
+            pdl=self.pdl,
+            token=entry.data[CONF_TOKEN],
+            session=async_create_clientsession(hass),
+        )
         self.statistics = {}
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
