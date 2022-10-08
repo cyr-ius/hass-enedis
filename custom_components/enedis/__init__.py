@@ -8,7 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_AFTER, CONF_BEFORE, CONF_DEVICE_ID
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from .const import CONF_POWER_MODE, DOMAIN, PLATFORMS, RELOAD_HISTORY
 from .coordinator import EnedisDataUpdateCoordinator
@@ -37,8 +37,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def async_reload_history(call) -> None:
-        await async_service_load_datas_history(hass, call)
+    async def async_reload_history(call: ServiceCall) -> None:
+        await async_service_load_datas_history(hass, coordinator.enedis, call)
 
     hass.services.async_register(
         DOMAIN, RELOAD_HISTORY, async_reload_history, schema=HISTORY_SERVICE_SCHEMA

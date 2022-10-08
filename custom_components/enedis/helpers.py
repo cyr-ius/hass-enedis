@@ -19,7 +19,7 @@ from homeassistant.const import (
     CONF_NAME,
     ENERGY_KILO_WATT_HOUR,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
@@ -242,7 +242,7 @@ def has_range(hour: datetime, start: str, end: str) -> bool:
     return False
 
 
-async def async_service_load_datas_history(hass: HomeAssistant, call):
+async def async_service_load_datas_history(hass: HomeAssistant, api: EnedisByPDL, call: ServiceCall):
     """Load datas in statics table."""
     device_registry = dr.async_get(hass)
     device = device_registry.async_get(call.data[CONF_DEVICE_ID])
@@ -290,4 +290,4 @@ async def async_service_load_datas_history(hass: HomeAssistant, call):
     else:
         end = call.data[CONF_BEFORE]
 
-    await async_fetch_datas(query, rules, start, end)
+    await async_fetch_datas(hass, api, query, rules, start, end)

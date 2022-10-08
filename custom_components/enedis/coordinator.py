@@ -55,77 +55,68 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             session=async_create_clientsession(hass),
             timeout=30,
         )
-        self.statistics = {}
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
+        statistics = {}
+
         # Fetch contract datas
-        if not (contracts := self.statistics.get("contracts", {})):
+        if not (contracts := statistics.get("contracts", {})):
             try:
                 contracts = await self.enedis.async_get_contract()
-                self.statistics.update({CONTRACTS: contracts})
+                statistics.update({CONTRACTS: contracts})
             except EnedisException as error:
                 _LOGGER.error(error)
 
         # Fetch consumption and production datas
-        modes = self.get_mode(self.entry)
-        for mode in modes:
+        rules = self.entry.options.get(CONF_RULES, {})
+        if self.entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY, PRODUCTION_DETAIL]:
+            mode = {
+                CONF_QUERY: self.entry.options[CONF_PRODUCTION],
+                CONF_AFTER: self.minus_date(365)
+                if self.entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY]
+                else self.minus_date(6),
+                CONF_BEFORE: datetime.now(),
+                CONF_RULES: [
+                    {
+                        CONF_NAME: PRODUCTION.lower(),
+                        CONF_STATISTIC_ID: f"{DOMAIN}:{self.pdl}_{PRODUCTION}".lower(),
+                        CONF_RULE_NAME: None,
+                        CONF_RULE_START_TIME: "00H00",
+                        CONF_RULE_END_TIME: "00H00",
+                        CONF_RULE_PRICE: self.entry.options[COST_PRODUCTION],
+                    },
+                ],
+            }
             datas = await async_fetch_datas(self.hass, self.enedis, **mode)
-            self.statistics.update(datas)
-        return self.statistics
+            statistics.update(datas)
 
-    def get_mode(self, entry: str) -> list(str, str):
-        """Return mode."""
-        collects = []
-        pdl = entry.data.get(CONF_PDL)
-        rules = entry.options.get(CONF_RULES, {})
-        if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY, PRODUCTION_DETAIL]:
-            collects.append(
-                {
-                    CONF_QUERY: entry.options[CONF_PRODUCTION],
-                    CONF_AFTER: self.minus_date(365)
-                    if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY]
-                    else self.minus_date(6),
-                    CONF_BEFORE: datetime.now(),
-                    CONF_RULES: [
-                        {
-                            CONF_NAME: PRODUCTION.lower(),
-                            CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{PRODUCTION}".lower(),
-                            CONF_RULE_NAME: None,
-                            CONF_RULE_START_TIME: "00H00",
-                            CONF_RULE_END_TIME: "00H00",
-                            CONF_RULE_PRICE: entry.options[COST_PRODUCTION],
-                        },
-                    ],
-                }
-            )
-        if entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY] or (
-            entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
+        if self.entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY] or (
+            self.entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
             and len(rules.keys()) == 0
         ):
-            collects.append(
-                {
-                    CONF_QUERY: entry.options[CONF_CONSUMTPION],
-                    CONF_AFTER: self.minus_date(365)
-                    if entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY]
-                    else self.minus_date(6),
-                    CONF_BEFORE: datetime.now(),
-                    CONF_RULES: [
-                        {
-                            CONF_NAME: CONSUMPTION.lower(),
-                            CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{CONSUMPTION}".lower(),
-                            CONF_RULE_NAME: None,
-                            CONF_RULE_START_TIME: "00H00",
-                            CONF_RULE_END_TIME: "00H00",
-                            CONF_RULE_PRICE: entry.options[COST_CONSUMTPION],
-                        },
-                    ],
-                }
-            )
-
+            mode = {
+                CONF_QUERY: self.entry.options[CONF_CONSUMTPION],
+                CONF_AFTER: self.minus_date(365)
+                if self.entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY]
+                else self.minus_date(6),
+                CONF_BEFORE: datetime.now(),
+                CONF_RULES: [
+                    {
+                        CONF_NAME: CONSUMPTION.lower(),
+                        CONF_STATISTIC_ID: f"{DOMAIN}:{self.pdl}_{CONSUMPTION}".lower(),
+                        CONF_RULE_NAME: None,
+                        CONF_RULE_START_TIME: "00H00",
+                        CONF_RULE_END_TIME: "00H00",
+                        CONF_RULE_PRICE: self.entry.options[COST_CONSUMTPION],
+                    },
+                ],
+            }
+            datas = await async_fetch_datas(self.hass, self.enedis, **mode)
+            statistics.update(datas)
         elif (
-            entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
+            self.entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
             and len(rules.keys()) > 0
         ):
             datas_rules = []
@@ -133,7 +124,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 datas_rules.append(
                     {
                         CONF_NAME: f"{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
-                        CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                        CONF_STATISTIC_ID: f"{DOMAIN}:{self.pdl}_{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
                         CONF_RULE_NAME: rule[CONF_RULE_NAME],
                         CONF_RULE_START_TIME: rule[CONF_RULE_START_TIME],
                         CONF_RULE_END_TIME: rule[CONF_RULE_END_TIME],
@@ -141,15 +132,16 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     }
                 )
 
-            collects.append(
-                {
-                    CONF_QUERY: entry.options[CONF_CONSUMTPION],
-                    CONF_AFTER: self.minus_date(6),
-                    CONF_BEFORE: datetime.now(),
-                    CONF_RULES: datas_rules,
-                }
-            )
-        return collects
+            mode = {
+                CONF_QUERY: self.entry.options[CONF_CONSUMTPION],
+                CONF_AFTER: self.minus_date(6),
+                CONF_BEFORE: datetime.now(),
+                CONF_RULES: datas_rules,
+            }
+            datas = await async_fetch_datas(self.hass, self.enedis, **mode)
+            statistics.update(datas)
+
+        return statistics
 
     @staticmethod
     def minus_date(days: int) -> datetime:
