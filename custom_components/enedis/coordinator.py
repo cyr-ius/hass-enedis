@@ -20,6 +20,7 @@ from homeassistant.const import (
     CONF_DEVICE_ID,
     CONF_AFTER,
     CONF_BEFORE,
+    CONF_NAME,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -47,6 +48,8 @@ from .const import (
     PRODUCTION,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
+    CONF_STATISTIC_ID,
+    CONF_QUERY,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
@@ -60,9 +63,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
         self.hass = hass
+        self.entry = entry
         self.pdl = entry.data[CONF_PDL]
-        self.options = entry.options
-        self.modes = self.get_mode(entry)
 
         self.enedis = EnedisByPDL(
             pdl=self.pdl,
@@ -84,19 +86,20 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error(error)
 
         # Fetch consumption and production datas
-        for mode in self.modes:
+        modes = self.get_mode(self.entry)
+        for mode in modes:
             datas = await self._async_fetch_datas(**mode)
             self.statistics.update(datas)
         return self.statistics
 
     async def _async_fetch_datas(
-        self, query: str, rules: list(str, str), start: datetime, end: datetime
+        self, query: str, rules: list(str, str), after: datetime, before: datetime
     ) -> dict:
         """Fetch datas."""
         datas_collected = []
         try:
             # Collect interval
-            datas = await self.enedis.async_fetch_datas(query, start, end)
+            datas = await self.enedis.async_fetch_datas(query, after, before)
             datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
         except EnedisException as error:
             _LOGGER.error(error)
@@ -109,9 +112,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         global_statistics = {}
         collects = {}
         for rule in rules:
-            statistic_id = rule["statistic_id"]
-            price_interval = rule["price_interval"]
-            name = rule["name"]
+            statistic_id = rule[CONF_STATISTIC_ID]
+            name = rule[CONF_NAME]
 
             if collects.get(name) is None:
                 metadata = StatisticMetaData(
@@ -127,8 +129,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                         name: {
                             "metadata": metadata,
                             "statistics": {},
-                            "price": price_interval[3],
-                            "statistic_id": statistic_id,
+                            "price": rule[CONF_RULE_PRICE],
+                            CONF_STATISTIC_ID: statistic_id,
                         }
                     }
                 )
@@ -161,7 +163,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     tzinfo=dt_util.UTC
                 )
 
-                if not has_range(date_collected, price_interval):
+                if not self.has_range(
+                    date_collected, rule[CONF_RULE_START_TIME], rule[CONF_RULE_END_TIME]
+                ):
                     continue
 
                 if (
@@ -207,8 +211,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 collects[name]["statistics"].update({date_ref: (value, summary)})
                 _LOGGER.debug("Collected : %s %s %s", date_ref, value, summary)
 
-            name = name if name else statistic_id.split(":")[1]
-            global_statistics.update({name: summary})
+            if rule.get("disabled") is None:
+                global_statistics.update({name: summary})
 
         for name, values in collects.items():
             statistics = []
@@ -227,7 +231,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
                     _LOGGER.debug("Add %s cost", name)
                     await self.async_insert_costs(
-                        statistics, values["statistic_id"], values["price"]
+                        statistics, values[CONF_STATISTIC_ID], values["price"]
                     )
         return global_statistics
 
@@ -251,9 +255,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         rules = [
             {
-                "name": power.lower(),
-                "statistic_id": statistic_id.lower(),
-                "price_interval": (None, "00H00", "00H00", cost),
+                CONF_NAME: power.lower(),
+                CONF_STATISTIC_ID: statistic_id.lower(),
+                CONF_RULE_NAME: None,
+                CONF_RULE_START_TIME: "00H00",
+                CONF_RULE_END_TIME: "00H00",
+                CONF_RULE_PRICE: cost,
+                "disabled": True,
             },
         ]
 
@@ -317,21 +325,19 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY, PRODUCTION_DETAIL]:
             collects.append(
                 {
-                    "query": entry.options[CONF_PRODUCTION],
-                    "start": self.minus_date(365)
+                    CONF_QUERY: entry.options[CONF_PRODUCTION],
+                    CONF_AFTER: self.minus_date(365)
                     if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY]
                     else self.minus_date(6),
-                    "end": datetime.now(),
-                    "rules": [
+                    CONF_BEFORE: datetime.now(),
+                    CONF_RULES: [
                         {
-                            "name": PRODUCTION.lower(),
-                            "statistic_id": f"{DOMAIN}:{pdl}_{PRODUCTION}".lower(),
-                            "price_interval": (
-                                None,
-                                "00H00",
-                                "00H00",
-                                entry.options[COST_PRODUCTION],
-                            ),
+                            CONF_NAME: PRODUCTION.lower(),
+                            CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{PRODUCTION}".lower(),
+                            CONF_RULE_NAME: None,
+                            CONF_RULE_START_TIME: "00H00",
+                            CONF_RULE_END_TIME: "00H00",
+                            CONF_RULE_PRICE: entry.options[COST_PRODUCTION],
                         },
                     ],
                 }
@@ -342,21 +348,19 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         ):
             collects.append(
                 {
-                    "query": entry.options[CONF_CONSUMTPION],
-                    "start": self.minus_date(365)
+                    CONF_QUERY: entry.options[CONF_CONSUMTPION],
+                    CONF_AFTER: self.minus_date(365)
                     if entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY]
                     else self.minus_date(6),
-                    "end": datetime.now(),
-                    "rules": [
+                    CONF_BEFORE: datetime.now(),
+                    CONF_RULES: [
                         {
-                            "name": CONSUMPTION.lower(),
-                            "statistic_id": f"{DOMAIN}:{pdl}_{CONSUMPTION}".lower(),
-                            "price_interval": (
-                                None,
-                                "00H00",
-                                "00H00",
-                                entry.options[COST_CONSUMTPION],
-                            ),
+                            CONF_NAME: CONSUMPTION.lower(),
+                            CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{CONSUMPTION}".lower(),
+                            CONF_RULE_NAME: None,
+                            CONF_RULE_START_TIME: "00H00",
+                            CONF_RULE_END_TIME: "00H00",
+                            CONF_RULE_PRICE: entry.options[COST_CONSUMTPION],
                         },
                     ],
                 }
@@ -370,23 +374,21 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             for rule in rules.values():
                 datas_rules.append(
                     {
-                        "name": f"{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
-                        "price_interval": (
-                            rule[CONF_RULE_NAME],
-                            rule[CONF_RULE_START_TIME],
-                            rule[CONF_RULE_END_TIME],
-                            rule[CONF_RULE_PRICE],
-                        ),
-                        "statistic_id": f"{DOMAIN}:{pdl}_{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                        CONF_NAME: f"{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                        CONF_STATISTIC_ID: f"{DOMAIN}:{pdl}_{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                        CONF_RULE_NAME: rule[CONF_RULE_NAME],
+                        CONF_RULE_START_TIME: rule[CONF_RULE_START_TIME],
+                        CONF_RULE_END_TIME: rule[CONF_RULE_END_TIME],
+                        CONF_RULE_PRICE: rule[CONF_RULE_PRICE],
                     }
                 )
 
             collects.append(
                 {
-                    "query": entry.options[CONF_CONSUMTPION],
-                    "start": self.minus_date(6),
-                    "end": datetime.now(),
-                    "rules": datas_rules,
+                    CONF_QUERY: entry.options[CONF_CONSUMTPION],
+                    CONF_AFTER: self.minus_date(6),
+                    CONF_BEFORE: datetime.now(),
+                    CONF_RULES: datas_rules,
                 }
             )
         return collects
@@ -403,15 +405,15 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         """Substract now."""
         return datetime.now() - timedelta(days=days)
 
-
-def has_range(hour: datetime, price_interval: list) -> bool:
-    """Check offpeak hour."""
-    midnight = datetime.strptime("00H00", "%HH%M").time()
-    start_time = hour.time()
-    starting = datetime.strptime(price_interval[1], "%HH%M").time()
-    ending = datetime.strptime(price_interval[2], "%HH%M").time()
-    if start_time > starting and start_time <= ending:
-        return True
-    elif (ending == midnight) and (start_time > starting or start_time == midnight):
-        return True
-    return False
+    @staticmethod
+    def has_range(hour: datetime, start: str, end: str) -> bool:
+        """Check offpeak hour."""
+        midnight = datetime.strptime("00H00", "%HH%M").time()
+        start_time = hour.time()
+        starting = datetime.strptime(start, "%HH%M").time()
+        ending = datetime.strptime(end, "%HH%M").time()
+        if start_time > starting and start_time <= ending:
+            return True
+        elif (ending == midnight) and (start_time > starting or start_time == midnight):
+            return True
+        return False
