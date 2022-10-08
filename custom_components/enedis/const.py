@@ -1,5 +1,5 @@
 """Constants for the Enedis integration."""
-COST_CONSUM = "consumption_cost"
+COST_CONSUMTPION = "consumption_cost"
 COST_PRODUCTION = "production_cost"
 COST_OFFPEAK = "offpeak_cost"
 COST_PEAK = "peak_cost"

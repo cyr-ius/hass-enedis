@@ -28,7 +28,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    COST_CONSUM,
+    COST_CONSUMTPION,
     CONF_CONSUMTPION,
     CONF_PDL,
     CONF_POWER_MODE,
@@ -242,7 +242,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         query = call.data[CONF_POWER_MODE]
         if query in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]:
             power = CONSUMPTION
-            cost = entry.options[COST_CONSUM]
+            cost = entry.options[COST_CONSUMTPION]
         else:
             power = PRODUCTION
             cost = entry.options[COST_PRODUCTION]
@@ -355,7 +355,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                                 None,
                                 "00H00",
                                 "00H00",
-                                entry.options[COST_CONSUM],
+                                entry.options[COST_CONSUMTPION],
                             ),
                         },
                     ],
