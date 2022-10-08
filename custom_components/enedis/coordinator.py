@@ -28,7 +28,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CC,
+    COST_CONSUM,
     CONF_CONSUMTPION,
     CONF_PDL,
     CONF_POWER_MODE,
@@ -43,11 +43,10 @@ from .const import (
     CONSUMPTION_DETAIL,
     CONTRACTS,
     DOMAIN,
-    PC,
+    COST_PRODUCTION,
     PRODUCTION,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
-    TEST_VALUES,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
@@ -79,7 +78,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         # Fetch contract datas
         if not (contracts := self.statistics.get("contracts", {})):
             try:
-                # contracts = await self.enedis.async_get_contract()
+                contracts = await self.enedis.async_get_contract()
                 self.statistics.update({CONTRACTS: contracts})
             except EnedisException as error:
                 _LOGGER.error(error)
@@ -94,14 +93,14 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self, query: str, rules: list(str, str), start: datetime, end: datetime
     ) -> dict:
         """Fetch datas."""
+        datas_collected = []
         try:
             # Collect interval
             datas = await self.enedis.async_fetch_datas(query, start, end)
             datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
-            # datas_collected = TEST_VALUES
-            return await self._async_statistics(datas_collected, rules)
         except EnedisException as error:
             _LOGGER.error(error)
+        return await self._async_statistics(datas_collected, rules)
 
     async def _async_statistics(
         self, datas_collected: list(str, str), rules: list = None
@@ -149,7 +148,6 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 else dt_util.parse_datetime(last_stats[statistic_id][0]["start"])
             )
 
-            _LOGGER.debug(f"Last date in database  {last_stats_time}")
             ref_date = None
             value = 0
             for data in datas_collected:
@@ -211,26 +209,26 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
             name = name if name else statistic_id.split(":")[1]
             global_statistics.update({name: summary})
-        if collects:
-            for name, values in collects.items():
-                statistics = []
-                for date_ref, datas in collects[name]["statistics"].items():
-                    statistics.append(
-                        StatisticData(start=date_ref, state=datas[0], sum=datas[1])
+
+        for name, values in collects.items():
+            statistics = []
+            for date_ref, datas in collects[name]["statistics"].items():
+                statistics.append(
+                    StatisticData(start=date_ref, state=datas[0], sum=datas[1])
+                )
+                if statistics:
+                    _LOGGER.debug("Add statistic %s to table", name)
+                    self.hass.async_add_executor_job(
+                        async_add_external_statistics,
+                        self.hass,
+                        values["metadata"],
+                        statistics,
                     )
 
-                _LOGGER.debug("Add statistic %s to table", name)
-                self.hass.async_add_executor_job(
-                    async_add_external_statistics,
-                    self.hass,
-                    values["metadata"],
-                    statistics,
-                )
-
-                _LOGGER.debug("Add %s cost", name)
-                await self.async_insert_costs(
-                    statistics, values["statistic_id"], values["price"]
-                )
+                    _LOGGER.debug("Add %s cost", name)
+                    await self.async_insert_costs(
+                        statistics, values["statistic_id"], values["price"]
+                    )
         return global_statistics
 
     async def async_load_datas_history(self, call):
@@ -244,10 +242,10 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         query = call.data[CONF_POWER_MODE]
         if query in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]:
             power = CONSUMPTION
-            cost = entry.options[CC]
+            cost = entry.options[COST_CONSUM]
         else:
             power = PRODUCTION
-            cost = entry.options[PC]
+            cost = entry.options[COST_PRODUCTION]
         start = call.data[CONF_AFTER]
         statistic_id = f"{DOMAIN}:{entry.pdl}_{power}"
 
@@ -332,7 +330,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                                 None,
                                 "00H00",
                                 "00H00",
-                                entry.options[PC],
+                                entry.options[COST_PRODUCTION],
                             ),
                         },
                     ],
@@ -357,7 +355,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                                 None,
                                 "00H00",
                                 "00H00",
-                                entry.options[CC],
+                                entry.options[COST_CONSUM],
                             ),
                         },
                     ],

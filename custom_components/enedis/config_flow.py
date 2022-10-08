@@ -18,28 +18,28 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    CC,
     CONF_CONSUMTPION,
     CONF_PDL,
     CONF_PRODUCTION,
     CONF_RULE_DELETE,
-    CONF_RULE_ID,
-    CONF_RULE_NEW_ID,
-    CONF_RULES,
-    CONF_RULE_START_TIME,
     CONF_RULE_END_TIME,
-    CONF_RULE_PRICE,
+    CONF_RULE_ID,
     CONF_RULE_NAME,
+    CONF_RULE_NEW_ID,
+    CONF_RULE_PRICE,
+    CONF_RULE_START_TIME,
+    CONF_RULES,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
+    COST_CONSUM,
+    COST_OFFPEAK,
+    COST_PEAK,
+    COST_PRODUCTION,
     DEFAULT_CC_PRICE,
     DEFAULT_HC_PRICE,
     DEFAULT_HP_PRICE,
     DEFAULT_PC_PRICE,
     DOMAIN,
-    HP,
-    HC,
-    PC,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
 )
@@ -114,9 +114,9 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                     data=user_input,
                     options={
                         CONF_CONSUMTPION: user_input[CONF_CONSUMTPION],
-                        CC: DEFAULT_CC_PRICE,
+                        COST_CONSUM: DEFAULT_CC_PRICE,
                         CONF_PRODUCTION: user_input[CONF_PRODUCTION],
-                        PC: DEFAULT_PC_PRICE,
+                        COST_PRODUCTION: DEFAULT_PC_PRICE,
                     },
                 )
 
@@ -180,7 +180,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    PC, default=options.get(PC, DEFAULT_PC_PRICE)
+                    COST_PRODUCTION,
+                    default=options.get(COST_PRODUCTION, DEFAULT_PC_PRICE),
                 ): cv.positive_float,
                 vol.Optional(
                     CONF_CONSUMTPION,
@@ -193,14 +194,15 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    CC, default=options.get(CC, DEFAULT_CC_PRICE)
+                    COST_PRODUCTION,
+                    default=options.get(COST_PRODUCTION, DEFAULT_CC_PRICE),
                 ): cv.positive_float,
                 vol.Optional(CONF_RULES): vol.In(rules),
                 vol.Optional(
-                    HP, default=options.get(HP, DEFAULT_HP_PRICE)
+                    COST_PEAK, default=options.get(COST_PEAK, DEFAULT_HP_PRICE)
                 ): cv.positive_float,
                 vol.Optional(
-                    HC, default=options.get(HC, DEFAULT_HC_PRICE)
+                    COST_OFFPEAK, default=options.get(COST_OFFPEAK, DEFAULT_HC_PRICE)
                 ): cv.positive_float,
             }
         )

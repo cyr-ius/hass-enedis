@@ -1,5 +1,8 @@
 """Constants for the Enedis integration."""
-CC = "consumption_cost"
+COST_CONSUM = "consumption_cost"
+COST_PRODUCTION = "production_cost"
+COST_OFFPEAK = "offpeak_cost"
+COST_PEAK = "peak_cost"
 CONF_CONSUMTPION = "config_consumption"
 CONF_PDL = "pdl"
 CONF_POWER_MODE = "power_mode"
@@ -16,16 +19,12 @@ CONSUMPTION = "consumption"
 CONSUMPTION_DAILY = "daily_consumption"
 CONSUMPTION_DETAIL = "consumption_load_curve"
 CONTRACTS = "contracts"
-CUSTOM_HOURS = "config_custom_hours"
 DEFAULT_CC_PRICE = 0.1740
 DEFAULT_HC_PRICE = 0.1470
 DEFAULT_HP_PRICE = 0.1841
 DEFAULT_PC_PRICE = 0.06
 DOMAIN = "enedis"
-HC = "offpeak_cost"
-HP = "peak_cost"
 MANUFACTURER = "Enedis"
-PC = "production_cost"
 PLATFORMS = ["sensor"]
 PRODUCTION = "production"
 PRODUCTION_DAILY = "daily_production"
