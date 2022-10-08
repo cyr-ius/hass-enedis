@@ -5,12 +5,14 @@ import logging
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_AFTER, CONF_BEFORE, CONF_DEVICE_ID
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_POWER_MODE, DOMAIN, PLATFORMS, RELOAD_HISTORY
 from .coordinator import EnedisDataUpdateCoordinator
+from .helpers import async_service_load_datas_history
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async def async_reload_history(call) -> None:
-        await coordinator.async_load_datas_history(call)
+        await async_service_load_datas_history(hass, call)
 
     hass.services.async_register(
         DOMAIN, RELOAD_HISTORY, async_reload_history, schema=HISTORY_SERVICE_SCHEMA
