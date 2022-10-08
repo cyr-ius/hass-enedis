@@ -5,6 +5,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
+from enedisgatewaypy import EnedisByPDL, EnedisException
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
@@ -13,16 +14,43 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_SOURCE, CONF_TOKEN, ENERGY_KILO_WATT_HOUR
+from homeassistant.const import (
+    CONF_TOKEN,
+    ENERGY_KILO_WATT_HOUR,
+    CONF_DEVICE_ID,
+    CONF_AFTER,
+    CONF_BEFORE,
+)
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_DETAIL, CONF_PDL, DOMAIN
-from .enedisgateway import HC, HP, EnedisException, EnedisGateway
+from .const import (
+    CC,
+    CONF_CONSUMTPION,
+    CONF_PDL,
+    CONF_POWER_MODE,
+    CONF_PRODUCTION,
+    CONF_RULE_END_TIME,
+    CONF_RULE_NAME,
+    CONF_RULE_PRICE,
+    CONF_RULE_START_TIME,
+    CONF_RULES,
+    CONSUMPTION,
+    CONSUMPTION_DAILY,
+    CONSUMPTION_DETAIL,
+    CONTRACTS,
+    DOMAIN,
+    PC,
+    PRODUCTION,
+    PRODUCTION_DAILY,
+    PRODUCTION_DETAIL,
+    TEST_VALUES,
+)
 
-SCAN_INTERVAL = timedelta(hours=2)
+SCAN_INTERVAL = timedelta(hours=3)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,63 +62,229 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         """Class to manage fetching data API."""
         self.hass = hass
         self.pdl = entry.data[CONF_PDL]
-        self.power = entry.options[CONF_SOURCE].lower()
-        self.hp = entry.options.get(HP)
-        self.hc = entry.options.get(HC)
-        self.detail = entry.options.get(CONF_DETAIL, False)
+        self.options = entry.options
+        self.modes = self.get_mode(entry)
 
-        self.enedis = EnedisGateway(
+        self.enedis = EnedisByPDL(
             pdl=self.pdl,
             token=entry.data[CONF_TOKEN],
             session=async_create_clientsession(hass),
+            timeout=30,
         )
         self.statistics = {}
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
-        unit = ENERGY_KILO_WATT_HOUR
-        start = (
-            (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
-            if self.detail
-            else (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        )
-        end = datetime.now().strftime("%Y-%m-%d")
-
-        if (contracts := self.statistics.get("contracts", {})) is None or len(
-            contracts
-        ) == 0:
+        # Fetch contract datas
+        if not (contracts := self.statistics.get("contracts", {})):
             try:
-                contracts = await self.enedis.async_get_contract_by_pdl()
-            except EnedisException:
-                _LOGGER.warning("Contract data is not complete")
+                # contracts = await self.enedis.async_get_contract()
+                self.statistics.update({CONTRACTS: contracts})
+            except EnedisException as error:
+                _LOGGER.error(error)
 
-        try:
-            datas = await self.enedis.async_get_datas(
-                self.power, start, end, self.detail
-            )
-            hourly_data = datas.get("meter_reading", {}).get("interval_reading", [])
-        except EnedisException:
-            hourly_data = []
-
-        try:
-            offpeak_hours = await self._async_offpeak_statistics(hourly_data, unit)
-            peak_hours = await self._async_peak_statistics(hourly_data, unit)
-            self.statistics = {
-                "contracts": contracts,
-                "energy": {
-                    CONF_SOURCE: self.power,
-                    "offpeak_hours": offpeak_hours,
-                    "peak_hours": peak_hours,
-                },
-            }
-        except EnedisException as error:
-            raise UpdateFailed(error)
-
+        # Fetch consumption and production datas
+        for mode in self.modes:
+            datas = await self._async_fetch_datas(**mode)
+            self.statistics.update(datas)
         return self.statistics
 
-    async def _async_insert_costs(self, statistics, statistic_id, name, price) -> dict:
+    async def _async_fetch_datas(
+        self, query: str, rules: list(str, str), start: datetime, end: datetime
+    ) -> dict:
+        """Fetch datas."""
+        try:
+            # Collect interval
+            datas = await self.enedis.async_fetch_datas(query, start, end)
+            datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
+            # datas_collected = TEST_VALUES
+            return await self._async_statistics(datas_collected, rules)
+        except EnedisException as error:
+            _LOGGER.error(error)
+
+    async def _async_statistics(
+        self, datas_collected: list(str, str), rules: list = None
+    ):
+        """Compute statistics."""
+        global_statistics = {}
+        collects = {}
+        for rule in rules:
+            statistic_id = rule["statistic_id"]
+            price_interval = rule["price_interval"]
+            name = rule["name"]
+
+            if collects.get(name) is None:
+                metadata = StatisticMetaData(
+                    has_mean=False,
+                    has_sum=True,
+                    name=name,
+                    source=DOMAIN,
+                    statistic_id=statistic_id,
+                    unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+                )
+                collects.update(
+                    {
+                        name: {
+                            "metadata": metadata,
+                            "statistics": {},
+                            "price": price_interval[3],
+                            "statistic_id": statistic_id,
+                        }
+                    }
+                )
+
+            # Fetch last information in database
+            last_stats = await get_instance(self.hass).async_add_executor_job(
+                get_last_statistics, self.hass, 1, statistic_id, True
+            )
+
+            # Fetch last sum in database
+            summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
+
+            # Fetch last time in database
+            last_stats_time = (
+                None
+                if not last_stats
+                else dt_util.parse_datetime(last_stats[statistic_id][0]["start"])
+            )
+
+            _LOGGER.debug(f"Last date in database  {last_stats_time}")
+            ref_date = None
+            value = 0
+            for data in datas_collected:
+                if (value_collected := int(data.get("value"))) is None:
+                    continue
+
+                interval = float(self.weighted_interval(data.get("interval_length")))
+                value_collected = value_collected / 1000 * interval  # Convert Wh to Kwh
+
+                date_collected = dt_util.parse_datetime(data["date"]).replace(
+                    tzinfo=dt_util.UTC
+                )
+
+                if not has_range(date_collected, price_interval):
+                    continue
+
+                if (
+                    last_stats_time is not None
+                    and date_collected <= last_stats_time + timedelta(days=1)
+                ):
+                    continue
+
+                if ref_date is None:
+                    value += value_collected
+                    _LOGGER.debug("New loop :%s %s", date_collected, value_collected)
+                    ref_date = date_collected
+                elif date_collected.day == ref_date.day:
+                    value += value_collected
+                    _LOGGER.debug("Same days : %s %s", date_collected, value_collected)
+                elif (
+                    date_collected.time() == datetime.strptime("00:00", "%H:%M").time()
+                ) and ref_date.time() != datetime.strptime("00:00", "%H:%M").time():
+                    value += value_collected
+                    _LOGGER.debug("Midnight : %s %s", date_collected, value_collected)
+                elif ref_date:
+                    date_ref = datetime.combine(ref_date, datetime.min.time()).replace(
+                        tzinfo=dt_util.UTC
+                    )
+
+                    if get_sum := collects[name]["statistics"].get(date_ref):
+                        value = get_sum[0] + value
+
+                    summary += value
+                    collects[name]["statistics"].update({date_ref: (value, summary)})
+                    _LOGGER.debug("Collected : %s %s %s", date_ref, value, summary)
+                    ref_date = date_collected
+                    value = value_collected
+                    _LOGGER.debug("%s %s", date_collected, value_collected)
+
+            if value > 0:
+                date_ref = datetime.combine(ref_date, datetime.min.time()).replace(
+                    tzinfo=dt_util.UTC
+                )
+                if get_sum := collects[name]["statistics"].get(date_ref):
+                    value = get_sum[0] + value
+                summary += value
+                collects[name]["statistics"].update({date_ref: (value, summary)})
+                _LOGGER.debug("Collected : %s %s %s", date_ref, value, summary)
+
+            name = name if name else statistic_id.split(":")[1]
+            global_statistics.update({name: summary})
+        if collects:
+            for name, values in collects.items():
+                statistics = []
+                for date_ref, datas in collects[name]["statistics"].items():
+                    statistics.append(
+                        StatisticData(start=date_ref, state=datas[0], sum=datas[1])
+                    )
+
+                _LOGGER.debug("Add statistic %s to table", name)
+                self.hass.async_add_executor_job(
+                    async_add_external_statistics,
+                    self.hass,
+                    values["metadata"],
+                    statistics,
+                )
+
+                _LOGGER.debug("Add %s cost", name)
+                await self.async_insert_costs(
+                    statistics, values["statistic_id"], values["price"]
+                )
+        return global_statistics
+
+    async def async_load_datas_history(self, call):
+        """Load datas in statics table."""
+        device_registry = dr.async_get(self.hass)
+        device = device_registry.async_get(call.data[CONF_DEVICE_ID])
+        for entry_id in device.config_entries:
+            if entry := self.hass.data[DOMAIN].get(entry_id):
+                break
+
+        query = call.data[CONF_POWER_MODE]
+        if query in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]:
+            power = CONSUMPTION
+            cost = entry.options[CC]
+        else:
+            power = PRODUCTION
+            cost = entry.options[PC]
+        start = call.data[CONF_AFTER]
+        statistic_id = f"{DOMAIN}:{entry.pdl}_{power}"
+
+        rules = [
+            {
+                "name": power.lower(),
+                "statistic_id": statistic_id.lower(),
+                "price_interval": (None, "00H00", "00H00", cost),
+            },
+        ]
+
+        stat = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            datetime.combine(start, datetime.min.time()).replace(tzinfo=dt_util.UTC),
+            None,
+            [statistic_id],
+            "hour",
+        )
+
+        if stat.get(statistic_id):
+            end = (
+                dt_util.parse_datetime(stat[statistic_id][0]["start"])
+                .replace(tzinfo=dt_util.UTC)
+                .date()
+            )
+        else:
+            end = call.data[CONF_BEFORE]
+
+        await self._async_fetch_datas(query, rules, start, end)
+
+    async def async_insert_costs(
+        self, statistics: StatisticData, statistic_id: str, price: float
+    ) -> None:
         """Insert costs."""
+        if price <= 0:
+            return
         last_stats = await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True
         )
@@ -98,251 +292,128 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         costs = []
         for stat in statistics:
-            _cost = round(stat[1] * price, 2)
-            cost_sum += _cost
-            costs.append(StatisticData(start=stat[0], state=_cost, sum=cost_sum))
+            cost = round(stat["state"] * price, 2)
+            cost_sum += cost
+            costs.append(StatisticData(start=stat["start"], state=cost, sum=cost_sum))
 
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=name,
-            source=DOMAIN,
-            statistic_id=statistic_id,
-            unit_of_measurement="EUR",
-        )
-        async_add_external_statistics(self.hass, metadata, costs)
-
-    async def _async_offpeak_statistics(self, hourly_data, unit) -> dict:
-        if self.detail is False:
-            _LOGGER.debug("Off-peak hours are not eligible")
-            return
-        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_offpeak"
-        last_stats = await get_instance(self.hass).async_add_executor_job(
-            get_last_statistics, self.hass, 1, statistic_id, True
-        )
-
-        if not last_stats:
-            energy_sum = 0
-            last_stats_time = None
-        else:
-            energy_sum = last_stats[statistic_id][0]["sum"]
-            last_stats_time = dt_util.parse_datetime(
-                last_stats[statistic_id][0]["start"]
+        if costs:
+            name = statistic_id.split(":")[1]
+            metadata = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=f"{name}_cost",
+                source=DOMAIN,
+                statistic_id=f"{statistic_id}_cost",
+                unit_of_measurement="EUR",
             )
-        _LOGGER.debug(f"Last date in database  {last_stats_time}")
-
-        statistics = []
-        statistics_cost = []
-        ref_date = None
-        last_value = 0
-        for data in hourly_data:
-            if (value := int(data.get("value"))) is None:
-                continue
-
-            start = dt_util.parse_datetime(data["date"]).replace(tzinfo=dt_util.UTC)
-            if last_stats_time is not None and start <= last_stats_time + timedelta(
-                days=1
-            ):
-                continue
-
-            if start.time() > datetime.min.time():
-                if self.enedis.check_offpeak(start):
-                    if ref_date is None:
-                        ref_date = datetime.combine(
-                            start.date(), datetime.min.time()
-                        ).replace(tzinfo=dt_util.UTC)
-                    interval = float(
-                        self.weighted_interval(data.get("interval_length"))
-                    )
-                    _LOGGER.debug(
-                        f"Offpeak Value {value} - Interval {interval} Hours {start}"
-                    )
-                    last_value += value * interval
-                continue
-            else:
-                if last_value > 0:
-
-                    if self.enedis.check_offpeak(start):
-                        interval = float(
-                            self.weighted_interval(data.get("interval_length"))
-                        )
-                        last_value += value * interval
-                        _LOGGER.debug(
-                            f"Offpeak Value {value} - Interval {interval} Hours {start}"
-                        )
-
-                    value_kwh = round(last_value / 1000, 2)
-                    statistics_cost.append((ref_date, value_kwh))
-                    energy_sum += value_kwh
-
-                    _LOGGER.debug(
-                        f"Offpeak Hours: {value_kwh} at {ref_date}, sum is {round(energy_sum, 2)}"
-                    )
-                    statistics.append(
-                        StatisticData(
-                            start=ref_date, state=value_kwh, sum=round(energy_sum, 2)
-                        )
-                    )
-                    last_value = 0
-                    ref_date = None
-
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=f"Off-peak {self.power} ({self.pdl})",
-            source=DOMAIN,
-            statistic_id=statistic_id,
-            unit_of_measurement=unit,
-        )
-
-        async_add_external_statistics(self.hass, metadata, statistics)
-
-        if self.hc:
-            await self._async_insert_costs(
-                statistics_cost,
-                f"{DOMAIN}:{self.pdl}_{self.power}_offpeak_cost",
-                f"Price of off-peak hours {self.power} ({self.pdl})",
-                self.hc,
+            self.hass.async_add_executor_job(
+                async_add_external_statistics, self.hass, metadata, costs
             )
 
-        return energy_sum
-
-    async def _async_peak_statistics(
-        self, hourly_data, unit, force=False, statistic_id=None
-    ) -> dict:
-        if statistic_id is None:
-            statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
-        last_stats = await get_instance(self.hass).async_add_executor_job(
-            get_last_statistics, self.hass, 1, statistic_id, True
-        )
-
-        if not last_stats or force is True:
-            energy_sum = 0
-            last_stats_time = None
-        else:
-            energy_sum = last_stats[statistic_id][0]["sum"]
-            last_stats_time = dt_util.parse_datetime(
-                last_stats[statistic_id][0]["start"]
+    @classmethod
+    def get_mode(self, entry: str) -> list(str, str):
+        """Return mode."""
+        collects = []
+        pdl = entry.data.get(CONF_PDL)
+        rules = entry.options.get(CONF_RULES, {})
+        if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY, PRODUCTION_DETAIL]:
+            collects.append(
+                {
+                    "query": entry.options[CONF_PRODUCTION],
+                    "start": self.minus_date(365)
+                    if entry.options[CONF_PRODUCTION] in [PRODUCTION_DAILY]
+                    else self.minus_date(6),
+                    "end": datetime.now(),
+                    "rules": [
+                        {
+                            "name": PRODUCTION.lower(),
+                            "statistic_id": f"{DOMAIN}:{pdl}_{PRODUCTION}".lower(),
+                            "price_interval": (
+                                None,
+                                "00H00",
+                                "00H00",
+                                entry.options[PC],
+                            ),
+                        },
+                    ],
+                }
             )
-        _LOGGER.debug(f"Last date in database  {last_stats_time}")
+        if entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY] or (
+            entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
+            and len(rules.keys()) == 0
+        ):
+            collects.append(
+                {
+                    "query": entry.options[CONF_CONSUMTPION],
+                    "start": self.minus_date(365)
+                    if entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DAILY]
+                    else self.minus_date(6),
+                    "end": datetime.now(),
+                    "rules": [
+                        {
+                            "name": CONSUMPTION.lower(),
+                            "statistic_id": f"{DOMAIN}:{pdl}_{CONSUMPTION}".lower(),
+                            "price_interval": (
+                                None,
+                                "00H00",
+                                "00H00",
+                                entry.options[CC],
+                            ),
+                        },
+                    ],
+                }
+            )
 
-        statistics = []
-        statistics_cost = []
-        last_value = 0
-        ref_date = None
-        for data in hourly_data:
-            if (value := int(data.get("value"))) is None:
-                continue
-
-            start = dt_util.parse_datetime(data["date"]).replace(tzinfo=dt_util.UTC)
-            if last_stats_time is not None and start <= last_stats_time + timedelta(
-                days=1
-            ):
-                continue
-
-            if start.time() > datetime.min.time():
-                if not self.enedis.check_offpeak(start):
-                    if ref_date is None:
-                        ref_date = datetime.combine(
-                            start.date(), datetime.min.time()
-                        ).replace(tzinfo=dt_util.UTC)
-                    interval = float(
-                        self.weighted_interval(data.get("interval_length"))
-                    )
-                    _LOGGER.debug(
-                        f"Peak Value {value} - Interval {interval} Hours {start}"
-                    )
-                    last_value += value * interval
-                continue
-            else:
-                date_refer = value_kwh = None
-                if last_value > 0:
-
-                    if not self.enedis.check_offpeak(start):
-                        interval = float(
-                            self.weighted_interval(data.get("interval_length"))
-                        )
-                        last_value += value * interval
-
-                        _LOGGER.debug(
-                            f"Peak Value {value} - Interval {interval} Hours {start}"
-                        )
-
-                    value_kwh = round(last_value / 1000, 2)
-                    date_refer = ref_date
-                    last_value = 0
-                    ref_date = None
-                else:
-                    value_kwh = round(value / 1000, 2)
-                    date_refer = start
-
-                statistics_cost.append((date_refer, value_kwh))
-                energy_sum += value_kwh
-                _LOGGER.debug(
-                    f"Peak Hours : {value_kwh} at {date_refer}, sum is {round(energy_sum, 2)}"
-                )
-                statistics.append(
-                    StatisticData(
-                        start=date_refer, state=value_kwh, sum=round(energy_sum, 2)
-                    )
+        elif (
+            entry.options[CONF_CONSUMTPION] in [CONSUMPTION_DETAIL]
+            and len(rules.keys()) > 0
+        ):
+            datas_rules = []
+            for rule in rules.values():
+                datas_rules.append(
+                    {
+                        "name": f"{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                        "price_interval": (
+                            rule[CONF_RULE_NAME],
+                            rule[CONF_RULE_START_TIME],
+                            rule[CONF_RULE_END_TIME],
+                            rule[CONF_RULE_PRICE],
+                        ),
+                        "statistic_id": f"{DOMAIN}:{pdl}_{CONSUMPTION}_{rule[CONF_RULE_NAME]}".lower(),
+                    }
                 )
 
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=f"Peak {self.power} ({self.pdl})",
-            source=DOMAIN,
-            statistic_id=statistic_id,
-            unit_of_measurement=unit,
-        )
-
-        async_add_external_statistics(self.hass, metadata, statistics)
-
-        if self.hp and force is False:
-            await self._async_insert_costs(
-                statistics_cost,
-                f"{DOMAIN}:{self.pdl}_{self.power}_peak_cost",
-                f"Price of peak hours {self.power} ({self.pdl})",
-                self.hp,
+            collects.append(
+                {
+                    "query": entry.options[CONF_CONSUMTPION],
+                    "start": self.minus_date(6),
+                    "end": datetime.now(),
+                    "rules": datas_rules,
+                }
             )
+        return collects
 
-        return energy_sum
-
-    def weighted_interval(self, interval):
+    @staticmethod
+    def weighted_interval(interval: str) -> float | int:
         """Compute weighted."""
-        if interval is None:
-            return 1
-        rslt = re.findall("PT([0-9]{2})M", interval)
-        if len(rslt) == 1:
+        if interval and len(rslt := re.findall("PT([0-9]{2})M", interval)) == 1:
             return int(rslt[0]) / 60
+        return 1
 
-    async def async_load_datas_history(self, call):
-        """Load datas in statics table."""
-        unit = ENERGY_KILO_WATT_HOUR
-        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}_peak"
-        start_stat = (datetime.now() - timedelta(days=365)).replace(tzinfo=dt_util.UTC)
+    @staticmethod
+    def minus_date(days: int) -> datetime:
+        """Substract now."""
+        return datetime.now() - timedelta(days=days)
 
-        stat = await get_instance(self.hass).async_add_executor_job(
-            statistics_during_period,
-            self.hass,
-            start_stat,
-            None,
-            [statistic_id],
-            "hour",
-            True,
-        )
 
-        start = (stat[statistic_id][0]["start"].date() - timedelta(days=1)).strftime(
-            "%Y-%m-%d"
-        )
-        end = start_stat.strftime("%Y-%m-%d")
-
-        statistic_id = f"{DOMAIN}:{self.pdl}_{self.power}"
-
-        try:
-            datas = await self.enedis.async_get_datas(self.power, start, end, False)
-            hourly_data = datas.get("meter_reading", {}).get("interval_reading", [])
-        except EnedisException:
-            hourly_data = []
-
-        await self._async_peak_statistics(hourly_data, unit, True, statistic_id)
+def has_range(hour: datetime, price_interval: list) -> bool:
+    """Check offpeak hour."""
+    midnight = datetime.strptime("00H00", "%HH%M").time()
+    start_time = hour.time()
+    starting = datetime.strptime(price_interval[1], "%HH%M").time()
+    ending = datetime.strptime(price_interval[2], "%HH%M").time()
+    if start_time > starting and start_time <= ending:
+        return True
+    elif (ending == midnight) and (start_time > starting or start_time == midnight):
+        return True
+    return False

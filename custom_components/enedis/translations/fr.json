@@ -1,0 +1,54 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Enregistre ton compte Enedis Gaeway",
+                "data": {
+                    "pdl": "PDL",
+                    "token": "Jeton",
+                    "config_consumption": "Activer la collecte des données de consommation (recommanded)",
+                    "config_production": "Activer la collecte des données de production (solaire, éolien..)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Impossible de se connecter",
+            "unknown": "Erreur imprévue"
+        },
+        "abort": {
+            "already_configured": "Service déjà configuré"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Enedis options",
+                "description": "La tarification horaire est seulement disponible en mode détail.",
+                "data": {
+                    "config_consumption": "Activer la collecte des données de consommation (recommanded)",
+                    "consumption_cost": "Tarif horaire normale",
+                    "config_production": "Activer la collecte des données de production (solaire, éolien..)",
+                    "production_cost": "Tarif horaire (rachat)",
+                    "offpeak_cost": "Tarif heure creuse",
+                    "peak_cost": "Tarif heure pleine"
+                }
+            },
+            "rules": {
+                "title": "Ajouter une nouvelle plage horaire",
+                "description": "Permet de délcarer une plage d'heures pour une tarification spécifique",
+                "data": {
+                    "rule_id": "Id",
+                    "rule_name": "Nom",
+                    "rule_start_time":"Heure de début",
+                    "rule_end_time":"Heure de fin",
+                    "rule_price":"Prix",
+                    "rule_delete": "Effacer cette plage horaire"
+                }
+            }            
+        },
+        "error": {
+            "syntax_error": "Erreur de syntax"
+        }        
+    }
+}

@@ -4,13 +4,9 @@
   "config_flow": true,
   "documentation": "https://github.com/cyr-ius/hass-enedis",
   "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
-  "requirements": [],
-  "ssdp": [],
-  "zeroconf": [],
-  "homekit": {},
+  "requirements": ["enedisgatewaypy==1.2.5"],
   "dependencies": ["recorder"],
-  "after_dependencies": [],
   "codeowners": ["@cyr-ius"],
   "iot_class": "cloud_polling",
-  "version": "2.2.2"  
+  "version": "2.3.0"
 }

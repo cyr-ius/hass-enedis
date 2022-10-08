@@ -1,5 +1,35 @@
 # Enedis service.
-
 reload_history:
   name: Retrieve datas history
-  description: This service allows you to retrieve all the data for the last year
+  description: This service allows you to retrieve data
+  fields:
+    device_id:
+      name: Device
+      required: true
+      selector:
+        device:
+          integration: enedis
+    power_mode:
+      name: Power type
+      required: true
+      default: daily_consumption
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: Consumption
+              value: daily_consumption
+            - label: Production
+              value: daily_production
+    after:
+      name: Start Date
+      description: Start history to reload
+      required: true
+      selector:
+        date:
+    before:
+      name: End Date
+      description: End history to reload
+      required: true
+      selector:
+        date:      
