@@ -48,8 +48,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self.pdl = entry.data[CONF_PDL]
-
-        self.enedis = EnedisByPDL(
+        self.api = EnedisByPDL(
             token=entry.data[CONF_TOKEN],
             session=async_create_clientsession(hass),
             timeout=30,
@@ -63,7 +62,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         # Fetch contract datas
         if not (contracts := statistics.get("contracts", {})):
             try:
-                contracts = await self.enedis.async_get_contract(self.pdl)
+                contracts = await self.api.async_get_contract(self.pdl)
                 statistics.update({CONTRACTS: contracts})
             except EnedisException as error:
                 _LOGGER.error(error)
@@ -92,7 +91,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 ],
                 CONF_PDL: self.pdl,
             }
-            datas = await async_fetch_datas(self.hass, self.enedis, **mode)
+            datas = await async_fetch_datas(self.hass, self.api, **mode)
             statistics.update(datas)
 
         if self.entry.options.get(CONF_CONSUMTPION) in [CONSUMPTION_DAILY] or (
@@ -117,7 +116,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 ],
                 CONF_PDL: self.pdl,
             }
-            datas = await async_fetch_datas(self.hass, self.enedis, **mode)
+            datas = await async_fetch_datas(self.hass, self.api, **mode)
             statistics.update(datas)
         elif (
             self.entry.options.get(CONF_CONSUMTPION) in [CONSUMPTION_DETAIL]
@@ -143,7 +142,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 CONF_RULES: datas_rules,
                 CONF_PDL: self.pdl,
             }
-            datas = await async_fetch_datas(self.hass, self.enedis, **mode)
+            datas = await async_fetch_datas(self.hass, self.api, **mode)
             statistics.update(datas)
 
         return statistics
