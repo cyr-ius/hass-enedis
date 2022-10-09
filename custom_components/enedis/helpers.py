@@ -82,6 +82,14 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                             statistic_id=statistic_id,
                             unit_of_measurement=ENERGY_KILO_WATT_HOUR,
                         ),
+                        "metacost": StatisticMetaData(
+                            has_mean=False,
+                            has_sum=True,
+                            name=f"{name}_cost",
+                            source=DOMAIN,
+                            statistic_id=f"{statistic_id}_cost",
+                            unit_of_measurement="EUR",
+                        ),
                         "statistics": {},
                         CONF_RULE_PRICE: rule[CONF_RULE_PRICE],
                         CONF_STATISTIC_ID: statistic_id,
@@ -95,7 +103,9 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
         )
 
         # Fetch last sum in database
-        summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
+        summary = cost_summary = (
+            0 if not last_stats else last_stats[statistic_id][0]["sum"]
+        )
 
         # Fetch last time in database
         last_stats_time = (
@@ -141,85 +151,71 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                 value += value_collected
                 _LOGGER.debug("Midnight : %s %s", date_collected, value_collected)
             elif ref_date:
-                date_ref = datetime.combine(ref_date, datetime.min.time()).replace(
-                    tzinfo=dt_util.UTC
-                )
-
+                date_ref = dateatmidnight(ref_date)
                 if get_sum := collects[name]["statistics"].get(date_ref):
                     value = get_sum[0] + value
 
                 summary += value
-                collects[name]["statistics"].update({date_ref: (value, summary)})
-                _LOGGER.debug("Collected : %s %s %s", date_ref, value, summary)
+                cost = value * rule[CONF_RULE_PRICE]
+                cost_summary += cost
+
+                collects[name]["statistics"].update(
+                    {date_ref: (value, summary, cost, cost_summary)}
+                )
+                _LOGGER.debug(
+                    "Collected : %s %s %s - %s€ %s€",
+                    date_ref,
+                    value,
+                    summary,
+                    cost,
+                    cost_summary,
+                )
+
                 ref_date = date_collected
                 value = value_collected
-                _LOGGER.debug("%s %s", date_collected, value_collected)
+                _LOGGER.debug("New day : %s %s", date_collected, value_collected)
 
         if value > 0:
-            date_ref = datetime.combine(ref_date, datetime.min.time()).replace(
-                tzinfo=dt_util.UTC
-            )
+            date_ref = dateatmidnight(ref_date)
             if get_sum := collects[name]["statistics"].get(date_ref):
                 value = get_sum[0] + value
+
             summary += value
-            collects[name]["statistics"].update({date_ref: (value, summary)})
-            _LOGGER.debug("Collected : %s %s %s", date_ref, value, summary)
+            cost = value * rule[CONF_RULE_PRICE]
+            cost_summary += cost
+
+            collects[name]["statistics"].update(
+                {date_ref: (value, summary, cost, cost_summary)}
+            )
+            _LOGGER.debug(
+                "Collected : %s %s %s - %s€ %s€",
+                date_ref,
+                value,
+                summary,
+                cost,
+                cost_summary,
+            )
 
         if rule.get("disabled") is None:
             global_statistics.update({name: summary})
 
     for name, values in collects.items():
-        statistics = []
+        stats = []
+        costs = []
         for date_ref, datas in collects[name]["statistics"].items():
-            statistics.append(
-                StatisticData(start=date_ref, state=datas[0], sum=datas[1])
+            stats.append(StatisticData(start=date_ref, state=datas[0], sum=datas[1]))
+            costs.append(StatisticData(start=date_ref, state=datas[2], sum=datas[3]))
+
+        if stats and costs:
+            _LOGGER.debug("Add %s stat in table", name)
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, values["metadata"], stats
             )
-            if statistics:
-                _LOGGER.debug("Add statistic table - %s (%s) ", name, date_ref)
-                hass.async_add_executor_job(
-                    async_add_external_statistics,
-                    hass,
-                    values["metadata"],
-                    statistics,
-                )
-
-                _LOGGER.debug("Add cost - %s (%s) ", name, date_ref)
-                await async_insert_costs(
-                    hass, statistics, values[CONF_STATISTIC_ID], values[CONF_RULE_PRICE]
-                )
+            _LOGGER.debug("Add %s cost in table", name)
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, values["metacost"], costs
+            )
     return global_statistics
-
-
-async def async_insert_costs(
-    hass: HomeAssistant, statistics: StatisticData, statistic_id: str, price: float
-) -> None:
-    """Insert costs."""
-    if price <= 0:
-        return
-    last_stats = await get_instance(hass).async_add_executor_job(
-        get_last_statistics, hass, 1, statistic_id, True
-    )
-    cost_sum = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
-
-    costs = []
-    for stat in statistics:
-        cost = round(stat["state"] * price, 2)
-        cost_sum += cost
-        costs.append(StatisticData(start=stat["start"], state=cost, sum=cost_sum))
-
-    if costs:
-        name = statistic_id.split(":")[1]
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=f"{name}_cost",
-            source=DOMAIN,
-            statistic_id=f"{statistic_id}_cost",
-            unit_of_measurement="EUR",
-        )
-        hass.async_add_executor_job(
-            async_add_external_statistics, hass, metadata, costs
-        )
 
 
 def weighted_interval(interval: str) -> float | int:
@@ -240,6 +236,11 @@ def has_range(hour: datetime, start: str, end: str) -> bool:
     elif (ending == midnight) and (start_time > starting or start_time == midnight):
         return True
     return False
+
+
+def dateatmidnight(date: datetime):
+    """Return date at midnight , ex 01/01/2000 00h00."""
+    return datetime.combine(date, datetime.min.time()).replace(tzinfo=dt_util.UTC)
 
 
 async def async_service_load_datas_history(
@@ -277,7 +278,7 @@ async def async_service_load_datas_history(
     stat = await get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
-        datetime.combine(start, datetime.min.time()).replace(tzinfo=dt_util.UTC),
+        dateatmidnight(start),
         None,
         [statistic_id],
         "hour",
