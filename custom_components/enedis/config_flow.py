@@ -65,14 +65,20 @@ DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PDL): str,
         vol.Required(CONF_TOKEN): str,
-        vol.Optional(CONF_CONSUMTPION, default=CONSUMPTION_DAILY,): SelectSelector(
+        vol.Optional(
+            CONF_CONSUMTPION, description={"suggested_value": CONSUMPTION_DAILY}
+        ): SelectSelector(
             SelectSelectorConfig(
-                options=CONSUMPTION_CHOICE, mode=SelectSelectorMode.DROPDOWN
+                options=CONSUMPTION_CHOICE,
+                mode=SelectSelectorMode.DROPDOWN,
+                custom_value=True,
             )
         ),
-        vol.Optional(CONF_PRODUCTION, default="none"): SelectSelector(
+        vol.Optional(CONF_PRODUCTION): SelectSelector(
             SelectSelectorConfig(
-                options=PRODUCTION_CHOICE, mode=SelectSelectorMode.DROPDOWN
+                options=PRODUCTION_CHOICE,
+                mode=SelectSelectorMode.DROPDOWN,
+                custom_value=True,
             )
         ),
     }
@@ -98,13 +104,12 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._async_abort_entries_match({CONF_PDL: user_input[CONF_PDL]})
             api = EnedisByPDL(
-                pdl=user_input[CONF_PDL],
                 token=user_input[CONF_TOKEN],
                 session=async_create_clientsession(self.hass),
                 timeout=30,
             )
             try:
-                await api.async_get_identity()
+                await api.async_get_identity(user_input[CONF_PDL])
             except EnedisException as error:
                 _LOGGER.error(error)
                 errors["base"] = "cannot_connect"
@@ -113,9 +118,9 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                     title=f"Linky ({user_input[CONF_PDL]})",
                     data=user_input,
                     options={
-                        CONF_CONSUMTPION: user_input[CONF_CONSUMTPION],
+                        CONF_CONSUMTPION: user_input.get(CONF_CONSUMTPION),
                         COST_CONSUMTPION: DEFAULT_CC_PRICE,
-                        CONF_PRODUCTION: user_input[CONF_PRODUCTION],
+                        CONF_PRODUCTION: user_input.get(CONF_PRODUCTION),
                         COST_PRODUCTION: DEFAULT_PC_PRICE,
                     },
                 )
