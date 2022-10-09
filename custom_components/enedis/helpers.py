@@ -49,12 +49,13 @@ async def async_fetch_datas(
     rules: list,
     after: datetime,
     before: datetime,
+    pdl: str,
 ) -> dict:
     """Fetch datas."""
     datas_collected = []
     try:
         # Collect interval
-        datas = await api.async_fetch_datas(query, after, before)
+        datas = await api.async_fetch_datas(query, after, before, pdl)
         datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
     except EnedisException as error:
         _LOGGER.error(error)
@@ -70,20 +71,19 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
         name = rule[CONF_NAME]
 
         if collects.get(name) is None:
-            metadata = StatisticMetaData(
-                has_mean=False,
-                has_sum=True,
-                name=name,
-                source=DOMAIN,
-                statistic_id=statistic_id,
-                unit_of_measurement=ENERGY_KILO_WATT_HOUR,
-            )
             collects.update(
                 {
                     name: {
-                        "metadata": metadata,
+                        "metadata": StatisticMetaData(
+                            has_mean=False,
+                            has_sum=True,
+                            name=name,
+                            source=DOMAIN,
+                            statistic_id=statistic_id,
+                            unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+                        ),
                         "statistics": {},
-                        "price": rule[CONF_RULE_PRICE],
+                        CONF_RULE_PRICE: rule[CONF_RULE_PRICE],
                         CONF_STATISTIC_ID: statistic_id,
                     }
                 }
@@ -175,7 +175,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                 StatisticData(start=date_ref, state=datas[0], sum=datas[1])
             )
             if statistics:
-                _LOGGER.debug("Add statistic %s to table", name)
+                _LOGGER.debug("Add statistic table - %s (%s) ", name, date_ref)
                 hass.async_add_executor_job(
                     async_add_external_statistics,
                     hass,
@@ -183,9 +183,9 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                     statistics,
                 )
 
-                _LOGGER.debug("Add %s cost", name)
+                _LOGGER.debug("Add cost - %s (%s) ", name, date_ref)
                 await async_insert_costs(
-                    statistics, values[CONF_STATISTIC_ID], values["price"]
+                    hass, statistics, values[CONF_STATISTIC_ID], values[CONF_RULE_PRICE]
                 )
     return global_statistics
 
@@ -242,14 +242,16 @@ def has_range(hour: datetime, start: str, end: str) -> bool:
     return False
 
 
-async def async_service_load_datas_history(hass: HomeAssistant, api: EnedisByPDL, call: ServiceCall):
+async def async_service_load_datas_history(
+    hass: HomeAssistant, api: EnedisByPDL, call: ServiceCall
+):
     """Load datas in statics table."""
     device_registry = dr.async_get(hass)
     device = device_registry.async_get(call.data[CONF_DEVICE_ID])
     for entry_id in device.config_entries:
         if entry := hass.data[DOMAIN].get(entry_id):
             break
-
+    pdl = entry.pdl
     query = call.data[CONF_POWER_MODE]
     if query in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]:
         power = CONSUMPTION
@@ -290,4 +292,4 @@ async def async_service_load_datas_history(hass: HomeAssistant, api: EnedisByPDL
     else:
         end = call.data[CONF_BEFORE]
 
-    await async_fetch_datas(hass, api, query, rules, start, end)
+    await async_fetch_datas(hass, api, query, rules, start, end, pdl)
