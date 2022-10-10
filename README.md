@@ -58,3 +58,10 @@ The following ranges should be defined:
     Off-peak hours 12H30 14H00 0.08
     Peak hours 14H00 00H00 0.12
 
+
+![image](https://user-images.githubusercontent.com/1258123/194921798-3bf9a495-e1af-4291-93ef-d5bb4783535c.png)
+
+
+
+
+
