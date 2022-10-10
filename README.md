@@ -8,7 +8,8 @@ There is currently support for the following device types within Home Assistant:
 
 
 
-### Install HACS [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+### HACS [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+Once HACS is installed,
 
 Click on the 3 dots at the top right
 
