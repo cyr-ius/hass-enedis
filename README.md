@@ -6,6 +6,18 @@ With Enedis, get datas from [Enedis Gateway](https://enedisgateway.tech)
 There is currently support for the following device types within Home Assistant:
 * [Power_sensor](#sensor)
 
+
+
+### Install HACS [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+
+Click on the 3 dots at the top right
+
+Add custom repositories
+
+    Integration : https://github.com/Cyr-ius/hass-enedis
+
+Add install Enedis [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=enedis)
+
 ## Features
 
 - Supports the consumption and production of Linky meters
@@ -28,7 +40,7 @@ Add your equipment via the Integration menu
 
 
 
-Within the Options menu:
+### Within the Options menu:
 
 The ranges must be set from midnight to midnight. (00H00 - 00H00)
 A range that has the same billing must have the same name so that HA can perform the sum.
