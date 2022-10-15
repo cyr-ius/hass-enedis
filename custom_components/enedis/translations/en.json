@@ -4,11 +4,10 @@
         "step": {
             "user": {
                 "title": "Register Enedis gateway account",
+                "description": "To start the collection, it is necessary to make the settings via the options.",
                 "data": {
                     "pdl": "PDL",
-                    "token": "Enedis Gateway Token",
-                    "config_consumption": "Enable fetch Consumption datas (recommanded)",
-                    "config_production": "Enable fetch Production datas"
+                    "token": "Enedis Gateway Token"
                 }
             }
         },
@@ -24,7 +23,7 @@
         "step": {
             "init": {
                 "title": "Enedis options",
-                "description": "Off-peak and peak hours only if consumption is detail",
+                "description": "Custom Off-peak and peak hours only if consumption is detail",
                 "data": {
                     "config_consumption": "Enable fetch Consumption datas (recommanded)",
                     "consumption_cost": "Consumption cost",

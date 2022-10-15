@@ -15,6 +15,8 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TimeSelector,
+    TimeSelectorConfig,
 )
 
 from .const import (
@@ -32,12 +34,8 @@ from .const import (
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     COST_CONSUMTPION,
-    COST_OFFPEAK,
-    COST_PEAK,
     COST_PRODUCTION,
     DEFAULT_CC_PRICE,
-    DEFAULT_HC_PRICE,
-    DEFAULT_HP_PRICE,
     DEFAULT_PC_PRICE,
     DOMAIN,
     PRODUCTION_DAILY,
@@ -54,33 +52,10 @@ CONSUMPTION_CHOICE = [
     SelectOptionDict(value=CONSUMPTION_DETAIL, label="Détaillé"),
 ]
 
-PRICE_CHOICE = [
-    SelectOptionDict(value=f"{DEFAULT_HC_PRICE}", label="Tarif heure creuse"),
-    SelectOptionDict(value=f"{DEFAULT_HP_PRICE}", label="Tarif heure pleine"),
-    SelectOptionDict(value=f"{DEFAULT_CC_PRICE}", label="Tarif de base"),
-    SelectOptionDict(value=f"{DEFAULT_PC_PRICE}", label="Tarif en rachat"),
-]
-
 DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PDL): str,
         vol.Required(CONF_TOKEN): str,
-        vol.Optional(
-            CONF_CONSUMTPION, description={"suggested_value": CONSUMPTION_DAILY}
-        ): SelectSelector(
-            SelectSelectorConfig(
-                options=CONSUMPTION_CHOICE,
-                mode=SelectSelectorMode.DROPDOWN,
-                custom_value=True,
-            )
-        ),
-        vol.Optional(CONF_PRODUCTION): SelectSelector(
-            SelectSelectorConfig(
-                options=PRODUCTION_CHOICE,
-                mode=SelectSelectorMode.DROPDOWN,
-                custom_value=True,
-            )
-        ),
     }
 )
 
@@ -203,12 +178,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     default=options.get(COST_CONSUMTPION, DEFAULT_CC_PRICE),
                 ): cv.positive_float,
                 vol.Optional(CONF_RULES): vol.In(rules),
-                vol.Optional(
-                    COST_PEAK, default=options.get(COST_PEAK, DEFAULT_HP_PRICE)
-                ): cv.positive_float,
-                vol.Optional(
-                    COST_OFFPEAK, default=options.get(COST_OFFPEAK, DEFAULT_HC_PRICE)
-                ): cv.positive_float,
             }
         )
 
@@ -242,16 +211,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     @callback
     def _async_rules_form(self, rule_id: str) -> FlowResult:
         """Return configuration form for rules."""
-        if isinstance(
-            (
-                price := self._rules.get(rule_id, {}).get(
-                    CONF_RULE_PRICE, "Tarif de base"
-                )
-            ),
-            float,
-        ):
-            price = str(price)
-
         rule_schema = {
             vol.Optional(
                 CONF_RULE_NAME,
@@ -263,28 +222,24 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                 CONF_RULE_START_TIME,
                 description={
                     "suggested_value": self._rules.get(rule_id, {}).get(
-                        CONF_RULE_START_TIME, "01H00"
+                        CONF_RULE_START_TIME
                     )
                 },
-            ): str,
+            ): TimeSelector(TimeSelectorConfig()),
             vol.Optional(
                 CONF_RULE_END_TIME,
                 description={
                     "suggested_value": self._rules.get(rule_id, {}).get(
-                        CONF_RULE_END_TIME, "06H00"
+                        CONF_RULE_END_TIME
                     )
                 },
-            ): str,
+            ): TimeSelector(TimeSelectorConfig()),
             vol.Optional(
                 CONF_RULE_PRICE,
-                description={"suggested_value": price},
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=PRICE_CHOICE,
-                    mode=SelectSelectorMode.DROPDOWN,
-                    custom_value=True,
-                )
-            ),
+                description={
+                    "suggested_value": self._rules.get(rule_id, {}).get(CONF_RULE_PRICE)
+                },
+            ): cv.positive_float,
         }
         if rule_id == CONF_RULE_NEW_ID:
             id = str(len(self._rules.keys()) + 1)

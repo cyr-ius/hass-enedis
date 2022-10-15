@@ -9,21 +9,21 @@ from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
+    clear_statistics,
     get_last_statistics,
     statistics_during_period,
 )
 from homeassistant.const import (
     CONF_AFTER,
     CONF_BEFORE,
-    CONF_DEVICE_ID,
     CONF_NAME,
     ENERGY_KILO_WATT_HOUR,
 )
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_ENTRY,
     CONF_POWER_MODE,
     CONF_RULE_END_TIME,
     CONF_RULE_NAME,
@@ -57,6 +57,7 @@ async def async_fetch_datas(
         # Collect interval
         datas = await api.async_fetch_datas(query, after, before, pdl)
         datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
+        _LOGGER.debug(datas_collected)
     except EnedisException as error:
         _LOGGER.error(error)
     return await async_statistics(hass, datas_collected, rules)
@@ -227,10 +228,10 @@ def weighted_interval(interval: str) -> float | int:
 
 def has_range(hour: datetime, start: str, end: str) -> bool:
     """Check offpeak hour."""
-    midnight = datetime.strptime("00H00", "%HH%M").time()
+    midnight = datetime.strptime("00:00:00", "%H:%M:%S").time()
     start_time = hour.time()
-    starting = datetime.strptime(start, "%HH%M").time()
-    ending = datetime.strptime(end, "%HH%M").time()
+    starting = datetime.strptime(start, "%H:%M:%S").time()
+    ending = datetime.strptime(end, "%H:%M:%S").time()
     if start_time > starting and start_time <= ending:
         return True
     elif (ending == midnight) and (start_time > starting or start_time == midnight):
@@ -247,11 +248,8 @@ async def async_service_load_datas_history(
     hass: HomeAssistant, api: EnedisByPDL, call: ServiceCall
 ):
     """Load datas in statics table."""
-    device_registry = dr.async_get(hass)
-    device = device_registry.async_get(call.data[CONF_DEVICE_ID])
-    for entry_id in device.config_entries:
-        if entry := hass.data[DOMAIN].get(entry_id):
-            break
+    entry_id = call.data[CONF_ENTRY]
+    entry = hass.data[DOMAIN].get(entry_id)
     pdl = entry.pdl
     query = call.data[CONF_POWER_MODE]
     if query in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]:
@@ -268,8 +266,8 @@ async def async_service_load_datas_history(
             CONF_NAME: power.lower(),
             CONF_STATISTIC_ID: statistic_id.lower(),
             CONF_RULE_NAME: None,
-            CONF_RULE_START_TIME: "00H00",
-            CONF_RULE_END_TIME: "00H00",
+            CONF_RULE_START_TIME: "00:00:00",
+            CONF_RULE_END_TIME: "00:00:00",
             CONF_RULE_PRICE: cost,
             "disabled": True,
         },
@@ -294,3 +292,12 @@ async def async_service_load_datas_history(
         end = call.data[CONF_BEFORE]
 
     await async_fetch_datas(hass, api, query, rules, start, end, pdl)
+
+
+async def async_service_datas_clear(hass: HomeAssistant, call: ServiceCall):
+    """Clear data in database."""
+    statistic_id = call.data[CONF_STATISTIC_ID]
+    if not statistic_id.startswith("enedis:"):
+        _LOGGER.error("statistic_id is incorrect %s", statistic_id)
+        return
+    hass.async_add_executor_job(clear_statistics, get_instance(hass), [statistic_id])

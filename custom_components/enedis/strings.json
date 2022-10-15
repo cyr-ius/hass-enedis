@@ -4,11 +4,10 @@
         "step": {
             "user": {
                 "title": "Register Enedis gateway account",
+                "description": "To start the collection, it is necessary to make the settings via the options.",
                 "data": {
-                    "pdl": "[%key:common::config_flow::data::pdl]",
-                    "token": "[%key:common::config_flow::data::token]",
-                    "config_consumption": "Enable fetch Consumption datas (recommanded)",
-                    "config_production": "Enable fetch Production datas (recommanded)"
+                    "pdl": "pdl",
+                    "token": "token"
                 }
             }
         },
@@ -27,9 +26,9 @@
                 "description": "Off-peak and peak hours only if consumption is detail",
                 "data": {
                     "config_consumption": "Enable fetch Consumption datas (recommanded)",
-                    "consumption_cost": "Consumption cost",                    
+                    "consumption_cost": "Consumption cost",
                     "config_production": "Enable fetch Production datas (recommanded)",
-                    "production_cost": "Production cost",                    
+                    "production_cost": "Production cost",
                     "offpeak_cost": "Off-peak hours price",
                     "peak_cost": "Peak hours price"
                 }
