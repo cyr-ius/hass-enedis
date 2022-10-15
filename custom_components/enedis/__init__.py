@@ -51,7 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         and entry.options.get("offpeak_cost") is not None
     ):
         options = dict(entry.options).copy()
-        for k, rule in entry.options.get(CONF_RULES).items():
+        for k, rule in entry.options.get(CONF_RULES, {}).items():
             rule[
                 CONF_RULE_START_TIME
             ] = f'{rule[CONF_RULE_START_TIME].replace("H", ":")}:00'
