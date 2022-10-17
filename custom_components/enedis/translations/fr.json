@@ -28,9 +28,7 @@
                     "config_consumption": "Collecter les données de consommation.",
                     "consumption_cost": "Tarif horaire",
                     "config_production": "Collecter des données de production (solaire, éolien..)",
-                    "production_cost": "Tarif horaire (rachat)",
-                    "offpeak_cost": "Tarif heure creuse",
-                    "peak_cost": "Tarif heure pleine"
+                    "production_cost": "Tarif horaire (rachat)"
                 }
             },
             "rules": {

@@ -28,9 +28,7 @@
                     "config_consumption": "Enable fetch Consumption datas (recommanded)",
                     "consumption_cost": "Consumption cost",
                     "config_production": "Enable fetch Production datas",
-                    "production_cost": "Production cost",
-                    "offpeak_cost": "Off-peak hours price",
-                    "peak_cost": "Peak hours price"
+                    "production_cost": "Production cost"
                 }
             },
             "rules": {
