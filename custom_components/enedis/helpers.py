@@ -100,7 +100,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
 
         # Fetch last information in database
         last_stats = await get_instance(hass).async_add_executor_job(
-            get_last_statistics, hass, 1, statistic_id, True
+            get_last_statistics, hass, 1, statistic_id, True, "sum"
         )
 
         # Fetch last sum in database
@@ -110,9 +110,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
 
         # Fetch last time in database
         last_stats_time = (
-            None
-            if not last_stats
-            else dt_util.parse_datetime(last_stats[statistic_id][0]["start"])
+            None if not last_stats else last_stats[statistic_id][0]["start"]
         )
 
         ref_date = None
