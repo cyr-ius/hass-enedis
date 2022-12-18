@@ -1,5 +1,46 @@
 # Enedis service.
+fetch_datas:
+  name: Fetch datas
+  description: This service allows you to fetch datas
+  fields:
+    entry:
+      name: Entry
+      required: true
+      selector:
+        config_entry:
+          integration: enedis
+    power_mode:
+      name: Power type
+      required: true
+      default: daily_consumption
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: Consumption
+              value: daily_consumption
+            - label: Production
+              value: daily_production
+    after:
+      name: Start Date
+      description: Start date
+      required: true
+      selector:
+        date:
+    before:
+      name: End Date
+      description: End date
+      required: true
+      selector:
+        date:
 
-reload_history:
-  name: Retrieve datas history
-  description: This service allows you to retrieve all the data for the last year
+# Enedis service.
+clear_datas:
+  name: Clear datas
+  description: This service allows you to clear datas
+  fields:
+    statistic_id:
+      name: Statistic Id
+      required: true
+      selector:
+        text:

@@ -1,0 +1,51 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Enregistre ton compte Enedis Gateway",
+                "description": "Pour démarrer la collecte, il est nécessaire d'effectuer les paramétrages via les options.",
+                "data": {
+                    "pdl": "PDL",
+                    "token": "Jeton"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Impossible de se connecter",
+            "unknown": "Erreur imprévue"
+        },
+        "abort": {
+            "already_configured": "Service déjà configuré"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Options",
+                "description": "La tarification personnalisée est disponible en mode Consommation: détaillé.",
+                "data": {
+                    "config_consumption": "Collecter les données de consommation.",
+                    "consumption_cost": "Tarif horaire",
+                    "config_production": "Collecter des données de production (solaire, éolien..)",
+                    "production_cost": "Tarif horaire (rachat)"
+                }
+            },
+            "rules": {
+                "title": "Ajouter une nouvelle plage horaire",
+                "description": "Permet de déclarer une plage pour une tarification spécifique.\n Attention la consommation doit être en mode détaillé",
+                "data": {
+                    "rule_id": "Id",
+                    "rule_name": "Nom",
+                    "rule_start_time":"Heure de début",
+                    "rule_end_time":"Heure de fin",
+                    "rule_price":"Prix",
+                    "rule_delete": "Effacer cette plage horaire"
+                }
+            }            
+        },
+        "error": {
+            "syntax_error": "Erreur de syntax"
+        }        
+    }
+}

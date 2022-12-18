@@ -4,6 +4,7 @@
         "step": {
             "user": {
                 "title": "Register Enedis gateway account",
+                "description": "To start the collection, it is necessary to make the settings via the options.",
                 "data": {
                     "pdl": "PDL",
                     "token": "Enedis Gateway Token"
@@ -11,30 +12,40 @@
             }
         },
         "error": {
-            "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+            "cannot_connect": "Failed to connect",
+            "unknown": "Unexpected error"
         },
         "abort": {
-            "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
+            "already_configured": "Service is already configured"
         }
     },
     "options": {
         "step": {
             "init": {
                 "title": "Enedis options",
-                "description": "Please select options to fetch datas",
+                "description": "Custom Off-peak and peak hours only if consumption is detail",
                 "data": {
-                    "energy": "Mode",
-                    "detail": "Detail (recommanded to compute offpeak hours)"
+                    "config_consumption": "Enable fetch Consumption datas (recommanded)",
+                    "consumption_cost": "Consumption cost",
+                    "config_production": "Enable fetch Production datas",
+                    "production_cost": "Production cost"
                 }
             },
-            "offpeak": {
-                "title": "Enedis options",
-                "description": "Please indicate the prices for off-peak and peak hours (optional)",
+            "rules": {
+                "title": "Add new range",
+                "description": "Add new range for tarification",
                 "data": {
-                    "offpeak_hours": "Off-peak hours price",
-                    "peak_hours": "Peak hours price"
+                    "rule_id": "Id",
+                    "rule_name": "Name",
+                    "rule_start_time":"Start time",
+                    "rule_end_time":"End time",
+                    "rule_price":"Price",
+                    "rule_delete": "Delete this range"
                 }
-            }
-        }
+            }            
+        },
+        "error": {
+            "syntax_error": "syntax error"
+        }        
     }
 }

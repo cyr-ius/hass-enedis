@@ -7,14 +7,13 @@ from homeassistant.components.sensor import (
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ENERGY_KILO_WATT_HOUR, CONF_SOURCE
+from homeassistant.const import ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .enedisgateway import MANUFACTURER, URL
-from .const import DOMAIN, CONF_DETAIL
+from .const import DOMAIN, MANUFACTURER, URL, CONTRACTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,10 +25,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensors."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    source = config_entry.options[CONF_SOURCE]
-    entities = [PowerSensor(coordinator, source, "peak_hours")]
-    if config_entry.options.get(CONF_DETAIL):
-        entities.append(PowerSensor(coordinator, source, "offpeak_hours"))
+    entities = [
+        PowerSensor(coordinator, name)
+        for name in coordinator.data.keys()
+        if name != CONTRACTS
+    ]
     async_add_entities(entities)
 
 
@@ -39,14 +39,15 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     _attr_device_class = DEVICE_CLASS_ENERGY
     _attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
     _attr_state_class = STATE_CLASS_TOTAL_INCREASING
+    _attr_has_entity_name = True
 
-    def __init__(self, coordinator, source, sensor_type):
+    def __init__(self, coordinator, sensor_name):
         """Initialize the sensor."""
         super().__init__(coordinator)
-        contracts = coordinator.data.get("contracts", {})
-        self.sensor_type = sensor_type
-        self._attr_unique_id = f"{coordinator.pdl}_{source}_{sensor_type}"
-        self._attr_name = f"{source} {sensor_type}"
+        contracts = coordinator.data.get(CONTRACTS, {})
+        self.sensor_mode = sensor_name
+        self._attr_unique_id = f"{coordinator.pdl}_{sensor_name}"
+        self._attr_name = sensor_name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.pdl)},
             name=f"Linky ({coordinator.pdl})",
@@ -66,6 +67,5 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Max power."""
-        value = int(self.coordinator.data.get("energy", {}).get(self.sensor_type))
-        return float(value)
+        """Value power."""
+        return float(self.coordinator.data.get(self.name))
