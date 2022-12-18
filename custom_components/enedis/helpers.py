@@ -104,7 +104,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
         )
 
         # Fetch last sum in database
-        summary = cost_summary = (
+        summary = (
             0 if not last_stats else last_stats[statistic_id][0]["sum"]
         )
 
@@ -155,8 +155,8 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                     value = get_sum[0] + value
 
                 summary += value
-                cost = value * rule[CONF_RULE_PRICE]
-                cost_summary += cost
+                cost = round(value * rule[CONF_RULE_PRICE], 2)
+                cost_summary = round(summary * rule[CONF_RULE_PRICE], 2)
 
                 collects[name]["statistics"].update(
                     {date_ref: (value, summary, cost, cost_summary)}
@@ -180,8 +180,8 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
                 value = get_sum[0] + value
 
             summary += value
-            cost = value * rule[CONF_RULE_PRICE]
-            cost_summary += cost
+            cost = round(value * rule[CONF_RULE_PRICE], 2)
+            cost_summary = round(summary * rule[CONF_RULE_PRICE], 2)
 
             collects[name]["statistics"].update(
                 {date_ref: (value, summary, cost, cost_summary)}
