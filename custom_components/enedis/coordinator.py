@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from enedisgatewaypy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisByPDL, EnedisException
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_AFTER, CONF_BEFORE, CONF_NAME, CONF_TOKEN
 from homeassistant.core import HomeAssistant
@@ -12,6 +12,8 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    ACCESS,
+    TEMPO,
     CONF_CONSUMTPION,
     CONF_PDL,
     CONF_PRODUCTION,
@@ -33,7 +35,7 @@ from .const import (
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
 )
-from .helpers import async_fetch_datas
+from .helpers import async_fetch_datas, datetostr
 
 SCAN_INTERVAL = timedelta(hours=3)
 
@@ -48,8 +50,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self.pdl = entry.data[CONF_PDL]
+        token = (
+            entry.options[CONF_TOKEN]
+            if entry.options.get(CONF_TOKEN)
+            else entry.data[CONF_TOKEN]
+        )
         self.api = EnedisByPDL(
-            token=entry.data[CONF_TOKEN],
+            token=token,
             session=async_create_clientsession(hass),
             timeout=30,
         )
@@ -58,14 +65,26 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
         statistics = {}
+        tempo_day = None
 
-        # Fetch contract datas
-        if not (contracts := statistics.get("contracts", {})):
-            try:
+        try:
+            access = await self.api.async_fetch_datas("valid_access", self.pdl)
+            statistics.update({ACCESS: access})
+
+            if not (contracts := statistics.get("contracts", {})):
+                # Fetch contract datas
                 contracts = await self.api.async_get_contract(self.pdl)
                 statistics.update({CONTRACTS: contracts})
-            except EnedisException as error:
-                _LOGGER.error(error)
+
+            if datetostr(datetime.now()) != tempo_day:
+                # Fetch tempo datas
+                tempo_day = datetostr(datetime.now())
+                tempo = await self.api.async_fetch_datas(
+                    f"rte/tempo/{tempo_day}/{tempo_day}", ""
+                )
+                statistics.update({TEMPO: tempo.get(tempo_day)})
+        except EnedisException as error:
+            _LOGGER.error(error)
 
         # Fetch consumption and production datas
         rules = self.entry.options.get(CONF_RULES, {})

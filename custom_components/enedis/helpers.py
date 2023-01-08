@@ -4,7 +4,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from enedisgatewaypy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisByPDL, EnedisException
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
@@ -55,7 +55,7 @@ async def async_fetch_datas(
     datas_collected = []
     try:
         # Collect interval
-        datas = await api.async_fetch_datas(query, after, before, pdl)
+        datas = await api.async_fetch_datas(query, pdl, after, before)
         datas_collected = datas.get("meter_reading", {}).get("interval_reading", [])
         _LOGGER.debug(datas_collected)
     except EnedisException as error:
@@ -104,9 +104,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
         )
 
         # Fetch last sum in database
-        summary = (
-            0 if not last_stats else last_stats[statistic_id][0]["sum"]
-        )
+        summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
 
         # Fetch last time in database
         last_stats_time = (
@@ -290,6 +288,16 @@ async def async_service_load_datas_history(
         end = call.data[CONF_BEFORE]
 
     await async_fetch_datas(hass, api, query, rules, start, end, pdl)
+
+
+def datetodt(date: str) -> datetime:
+    """Return format datetime."""
+    return datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
+
+
+def datetostr(date: datetime) -> str:
+    """Return format string date."""
+    return date.strftime("%Y-%m-%d")
 
 
 async def async_service_datas_clear(hass: HomeAssistant, call: ServiceCall):
