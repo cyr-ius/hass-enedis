@@ -25,6 +25,7 @@
                 "title": "Options",
                 "description": "La tarification personnalisée est disponible en mode Consommation: détaillé.",
                 "data": {
+                    "token": "Jeton",
                     "config_consumption": "Collecter les données de consommation.",
                     "consumption_cost": "Tarif horaire",
                     "config_production": "Collecter des données de production (solaire, éolien..)",

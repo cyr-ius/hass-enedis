@@ -25,6 +25,7 @@
                 "title": "Enedis options",
                 "description": "Off-peak and peak hours only if consumption is detail",
                 "data": {
+                    "token": "token",
                     "config_consumption": "Enable fetch Consumption datas (recommanded)",
                     "consumption_cost": "Consumption cost",
                     "config_production": "Enable fetch Production datas (recommanded)",

@@ -4,7 +4,7 @@ from typing import Any
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from enedisgatewaypy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisByPDL, EnedisException
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import callback
@@ -97,6 +97,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                         COST_CONSUMTPION: DEFAULT_CC_PRICE,
                         CONF_PRODUCTION: user_input.get(CONF_PRODUCTION),
                         COST_PRODUCTION: DEFAULT_PC_PRICE,
+                        CONF_TOKEN: user_input.get(CONF_TOKEN),
                     },
                 )
 
@@ -149,6 +150,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
         options_schema = vol.Schema(
             {
+                vol.Optional(CONF_TOKEN, default=options.get(CONF_TOKEN, self.config_entry.data[CONF_TOKEN])): str,
                 vol.Optional(
                     CONF_PRODUCTION,
                     description={"suggested_value": options.get(CONF_PRODUCTION)},
