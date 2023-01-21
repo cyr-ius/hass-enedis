@@ -12,10 +12,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.entity import EntityCategory
 
-from .const import ACCESS, CONTRACTS, DOMAIN, MANUFACTURER, URL, TEMPO
-from .helpers import datetodt
+from .const import (
+    ACCESS,
+    CONF_CONTRACT,
+    CONF_ECOWATT,
+    CONF_TEMPO,
+    DOMAIN,
+    MANUFACTURER,
+    URL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,11 +35,9 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities = []
     for name in coordinator.data.keys():
-        if name not in [CONTRACTS, ACCESS, TEMPO]:
+        if name not in [ACCESS, CONF_CONTRACT, CONF_ECOWATT, CONF_TEMPO]:
             entities.append(PowerSensor(coordinator, name))
-        if name == ACCESS:
-            entities.append(CountdownSensor(coordinator))
-        if name == TEMPO:
+        if name == CONF_TEMPO:
             entities.append(TempoSensor(coordinator))
     async_add_entities(entities)
 
@@ -49,7 +53,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, sensor_name):
         """Initialize the sensor."""
         super().__init__(coordinator)
-        contracts = coordinator.data.get(CONTRACTS, {})
+        contracts = coordinator.data.get(CONF_CONTRACT, {})
         self.sensor_mode = sensor_name
         self._attr_unique_id = f"{coordinator.pdl}_{sensor_name}"
         self._attr_name = sensor_name
@@ -73,38 +77,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Value power."""
-        return float(self.coordinator.data.get(self.name))
-
-
-class CountdownSensor(CoordinatorEntity, SensorEntity):
-    """Sensor return token expiration date."""
-
-    _attr_device_class = SensorDeviceClass.DATE
-    _attr_name = "Token expiration date"
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        access = coordinator.data.get(ACCESS, {})
-        self._attr_unique_id = f"{coordinator.pdl}_token_expire"
-        self._attr_extra_state_attributes = {
-            "Call number": access.get("call_number"),
-            "Last call": access.get("last_call"),
-            "Banned": access.get("ban"),
-            "Quota": access.get("quota_limit"),
-            "Quota reached": access.get("quota_reached"),
-        }
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
-
-    @property
-    def native_value(self):
-        """Value power."""
-        consent_expiration_date = self.coordinator.data.get(ACCESS).get(
-            "consent_expiration_date"
-        )
-        return datetodt(consent_expiration_date)
+        return round(float(self.coordinator.data.get(self.name)), 2)
 
 
 class TempoSensor(CoordinatorEntity, SensorEntity):
@@ -128,4 +101,4 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Value power."""
-        return self.coordinator.data.get(TEMPO)
+        return self.coordinator.data.get(CONF_TEMPO)

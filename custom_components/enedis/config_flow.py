@@ -20,7 +20,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    CONF_CONSUMTPION,
+    CONF_CONSUMPTION,
     CONF_PDL,
     CONF_PRODUCTION,
     CONF_RULE_DELETE,
@@ -33,7 +33,7 @@ from .const import (
     CONF_RULES,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
-    COST_CONSUMTPION,
+    COST_CONSUMPTION,
     COST_PRODUCTION,
     DEFAULT_CC_PRICE,
     DEFAULT_PC_PRICE,
@@ -93,8 +93,8 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                     title=f"Linky ({user_input[CONF_PDL]})",
                     data=user_input,
                     options={
-                        CONF_CONSUMTPION: user_input.get(CONF_CONSUMTPION),
-                        COST_CONSUMTPION: DEFAULT_CC_PRICE,
+                        CONF_CONSUMPTION: user_input.get(CONF_CONSUMPTION),
+                        COST_CONSUMPTION: DEFAULT_CC_PRICE,
                         CONF_PRODUCTION: user_input.get(CONF_PRODUCTION),
                         COST_PRODUCTION: DEFAULT_PC_PRICE,
                         CONF_TOKEN: user_input.get(CONF_TOKEN),
@@ -150,7 +150,10 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
         options_schema = vol.Schema(
             {
-                vol.Optional(CONF_TOKEN, default=options.get(CONF_TOKEN, self.config_entry.data[CONF_TOKEN])): str,
+                vol.Optional(
+                    CONF_TOKEN,
+                    default=options.get(CONF_TOKEN, self.config_entry.data[CONF_TOKEN]),
+                ): str,
                 vol.Optional(
                     CONF_PRODUCTION,
                     description={"suggested_value": options.get(CONF_PRODUCTION)},
@@ -166,8 +169,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     default=options.get(COST_PRODUCTION, DEFAULT_PC_PRICE),
                 ): cv.positive_float,
                 vol.Optional(
-                    CONF_CONSUMTPION,
-                    description={"suggested_value": options.get(CONF_CONSUMTPION)},
+                    CONF_CONSUMPTION,
+                    description={"suggested_value": options.get(CONF_CONSUMPTION)},
                 ): SelectSelector(
                     SelectSelectorConfig(
                         options=CONSUMPTION_CHOICE,
@@ -176,8 +179,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    COST_CONSUMTPION,
-                    default=options.get(COST_CONSUMTPION, DEFAULT_CC_PRICE),
+                    COST_CONSUMPTION,
+                    default=options.get(COST_CONSUMPTION, DEFAULT_CC_PRICE),
                 ): cv.positive_float,
                 vol.Optional(CONF_RULES): vol.In(rules),
             }
