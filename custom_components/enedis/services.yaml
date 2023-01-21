@@ -21,13 +21,13 @@ fetch_datas:
               value: daily_consumption
             - label: Production
               value: daily_production
-    after:
+    start_date:
       name: Start Date
       description: Start date
       required: true
       selector:
         date:
-    before:
+    end_date:
       name: End Date
       description: End date
       required: true

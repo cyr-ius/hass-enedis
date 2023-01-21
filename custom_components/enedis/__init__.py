@@ -7,7 +7,6 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_AFTER, CONF_BEFORE
 from homeassistant.core import HomeAssistant, ServiceCall
 
 from .const import (
@@ -17,10 +16,9 @@ from .const import (
     PLATFORMS,
     FETCH_SERVICE,
     CLEAR_SERVICE,
-    CONF_RULES,
-    CONF_RULE_START_TIME,
-    CONF_RULE_END_TIME,
     CONF_ENTRY,
+    CONF_START_DATE,
+    CONF_END_DATE,
 )
 from .coordinator import EnedisDataUpdateCoordinator
 from .helpers import async_service_load_datas_history, async_service_datas_clear
@@ -31,8 +29,8 @@ HISTORY_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_ENTRY): str,
         vol.Optional(CONF_POWER_MODE): str,
-        vol.Optional(CONF_AFTER): cv.date,
-        vol.Optional(CONF_BEFORE): cv.date,
+        vol.Optional(CONF_START_DATE): cv.date,
+        vol.Optional(CONF_END_DATE): cv.date,
     }
 )
 CLEAR_SERVICE_SCHEMA = vol.Schema(
@@ -45,23 +43,6 @@ CLEAR_SERVICE_SCHEMA = vol.Schema(
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Enedis as config entry."""
     hass.data.setdefault(DOMAIN, {})
-
-    if (
-        entry.options.get("peak_cost") is not None
-        and entry.options.get("offpeak_cost") is not None
-    ):
-        options = dict(entry.options).copy()
-        for k, rule in entry.options.get(CONF_RULES, {}).items():
-            rule[
-                CONF_RULE_START_TIME
-            ] = f'{rule[CONF_RULE_START_TIME].replace("H", ":")}:00'
-            rule[
-                CONF_RULE_END_TIME
-            ] = f'{rule[CONF_RULE_END_TIME].replace("H", ":")}:00'
-        options[CONF_RULES] = entry.options.get(CONF_RULES)
-        options.pop("peak_cost")
-        options.pop("offpeak_cost")
-        hass.config_entries.async_update_entry(entry=entry, options=options)
 
     coordinator = EnedisDataUpdateCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
