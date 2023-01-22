@@ -1,4 +1,6 @@
 """Binary Sensor for power energy."""
+from __future__ import annotations
+
 import logging
 
 from homeassistant.components.binary_sensor import (
@@ -7,10 +9,9 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.entity import EntityCategory
 
 from .const import ACCESS, DOMAIN
 
@@ -53,4 +54,4 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self):
         """Value power."""
-        return self.coordinator.data.get(ACCESS).get("valid", False)
+        return self.coordinator.data.get(ACCESS).get("valid", False) is False
