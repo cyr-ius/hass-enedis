@@ -26,6 +26,8 @@
                 "description": "Custom Off-peak and peak hours only if consumption is detail",
                 "data": {
                     "token": "Token",
+                    "ecowatt": "Enable Ecowatt sensor",
+                    "tempo_day": "Enable Tempo day sensor",                    
                     "config_consumption": "Enable fetch Consumption datas (recommanded)",
                     "consumption_cost": "Consumption cost",
                     "config_production": "Enable fetch Production datas",

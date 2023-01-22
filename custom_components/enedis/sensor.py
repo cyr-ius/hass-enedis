@@ -1,4 +1,7 @@
 """Sensor for power energy."""
+from __future__ import annotations
+
+from datetime import datetime as dt
 import logging
 
 from homeassistant.components.sensor import (
@@ -101,4 +104,5 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Value power."""
-        return self.coordinator.data.get(CONF_TEMPO)
+        str_date = dt.now().date().strftime("%Y-%m-%d")
+        return self.coordinator.data.get(CONF_TEMPO, {}).get(str_date)

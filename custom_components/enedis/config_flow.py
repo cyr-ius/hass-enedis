@@ -2,14 +2,15 @@
 import logging
 from typing import Any
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
 from myelectricaldatapy import EnedisByPDL, EnedisException
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
@@ -21,6 +22,7 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_CONSUMPTION,
+    CONF_ECOWATT,
     CONF_PDL,
     CONF_PRODUCTION,
     CONF_RULE_DELETE,
@@ -31,6 +33,7 @@ from .const import (
     CONF_RULE_PRICE,
     CONF_RULE_START_TIME,
     CONF_RULES,
+    CONF_TEMPO,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     COST_CONSUMPTION,
@@ -154,6 +157,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     CONF_TOKEN,
                     default=options.get(CONF_TOKEN, self.config_entry.data[CONF_TOKEN]),
                 ): str,
+                vol.Optional(CONF_ECOWATT, default=options.get(CONF_ECOWATT)): bool,
+                vol.Optional(CONF_TEMPO, default=options.get(CONF_TEMPO)): bool,
                 vol.Optional(
                     CONF_PRODUCTION,
                     description={"suggested_value": options.get(CONF_PRODUCTION)},
