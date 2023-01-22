@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 
-from myelectricaldatapy import EnedisByPDL
+from myelectricaldatapy import EnedisByPDL, EnedisException
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
@@ -47,11 +47,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
-        self.last_access = datetime.now().date()
+        self.last_access: datetime | None = None
         self.hass = hass
         self.entry = entry
-        self.pdl = entry.data[CONF_PDL]
-        token = (
+        self.pdl: str = entry.data[CONF_PDL]
+        token: str = (
             entry.options[CONF_TOKEN]
             if entry.options.get(CONF_TOKEN)
             else entry.data[CONF_TOKEN]
@@ -64,9 +64,37 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
         statistics = {}
-        rules = {}
-        datas_collected = []
+        # Add statistics in HA Database
+        for data in await self._async_datas_collect():
+            stats = await async_statistics(self.hass, **data)
+            statistics.update(stats)
 
+        try:
+            # Check  has a valid access
+            statistics.update({ACCESS: await self.api.async_valid_access(self.pdl)})
+
+            if self.last_access is None or self.last_access < datetime.now().date():
+                # Get contract
+                statistics.update(
+                    {CONF_CONTRACT: await self.api.async_get_contract(self.pdl)}
+                )
+                # Get tempo day
+                if self.entry.options[CONF_TEMPO] and self.api.last_access:
+                    statistics.update({CONF_TEMPO: await self.api.async_get_tempoday()})
+                # Get ecowatt information
+                if self.entry.options[CONF_ECOWATT]:
+                    statistics.update(
+                        {CONF_ECOWATT: await self.api.async_get_ecowatt()}
+                    )
+                self.last_access = datetime.now().date()
+        except EnedisException as error:
+            _LOGGER.error(error)
+
+        return statistics
+
+    async def _async_datas_collect(self):
+        """Prepare data."""
+        datas_collected = []
         if (service := self.entry.options.get(CONF_PRODUCTION)) in [
             PRODUCTION_DAILY,
             PRODUCTION_DETAIL,
@@ -120,24 +148,4 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
             datas_collected.append({CONF_DATASET: dataset, CONF_RULES: rules})
 
-        # Add statistics in HA Database
-        for data in datas_collected:
-            stats = await async_statistics(self.hass, **data)
-            statistics.update(stats)
-
-        # Check  has a valid access
-        statistics.update({ACCESS: await self.api.async_valid_access(self.pdl)})
-
-        if self.last_access < datetime.now().date():
-            # Get contract
-            statistics.update(
-                {CONF_CONTRACT: await self.api.async_get_contract(self.pdl)}
-            )
-            # Get tempo day
-            if self.entry.options[CONF_TEMPO] and self.api.last_access:
-                statistics.update({CONF_TEMPO: await self.api.async_get_tempoday()})
-            # Get ecowatt information
-            if self.entry.options[CONF_ECOWATT]:
-                statistics.update({CONF_ECOWATT: await self.api.async_get_ecowatt()})
-            self.last_access = datetime.now().date()
-        return statistics
+            return datas_collected
