@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_DISABLED,
     CONF_END_DATE,
     CONF_ENTRY,
     CONF_POWER_MODE,
@@ -36,6 +37,9 @@ from .const import (
     COST_PRODUCTION,
     DOMAIN,
     PRODUCTION,
+    CONF_PRICING_NAME,
+    CONF_PRICING_COST,
+    CONF_PRICING_INTERVALS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,7 +78,7 @@ async def async_statistics(hass: HomeAssistant, dataset: dict, rules: list = Non
             if not last_stats
             else last_stats[statistic_id][0]["start"].strftime("%Y-%m-%d")
         )
-        _LOGGER.debug("Start date : %s", last_stats_time)
+        _LOGGER.debug("Start date > %s", last_stats_time)
 
         analytics = EnedisAnalytics(dataset)
         datas_collected = analytics.get_data_analytcis(
@@ -96,7 +100,7 @@ async def async_statistics(hass: HomeAssistant, dataset: dict, rules: list = Non
         if sum_value := analytics.get_last_value(datas_collected, "date", "sum_value"):
             summary = sum_value
 
-        if rule.get("disabled") is None:
+        if rule.get(CONF_DISABLED) is None:
             global_statistics.update({name: summary})
 
         stats = []
@@ -152,21 +156,27 @@ def minus_date(days: int) -> datetime:
     return datetime.now() - timedelta(days=days)
 
 
-def rules_format(pdl: str, power: str, rules: dict[str, str]) -> dict[str, str]:
+def rules_format(
+    pdl: str, power: str, rules: dict[str, str], tempo_day: str | None = None
+) -> dict[str, str]:
     """Construct rules."""
     datas_rules = {}
     for rule in rules.values():
-        id = f"{DOMAIN}:{pdl}_{power}_{rule[CONF_RULE_NAME]}".lower()
+        id = f"{DOMAIN}:{pdl}_{power}_{rule[CONF_PRICING_NAME]}".lower()
         # Create empty dict
         if not datas_rules.get(id):
             datas_rules.update({id: {CONF_RULE_PERIOD: []}})
 
         # Add attributs
-        datas_rules[id][CONF_RULE_PERIOD].append(
-            (rule[CONF_RULE_START_TIME], rule[CONF_RULE_END_TIME])
-        )
-        datas_rules[id][CONF_RULE_PRICE] = rule[CONF_RULE_PRICE]
-        datas_rules[id][CONF_RULE_NAME] = f"{power}_{rule[CONF_RULE_NAME]}".lower()
+        for interval in rule.get(CONF_PRICING_INTERVALS, {}).values():
+            datas_rules[id][CONF_RULE_PERIOD].append(
+                (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+            )
+        if tempo_day and rule.get(tempo_day):
+            datas_rules[id][CONF_RULE_PRICE] = rule[tempo_day]
+        else:
+            datas_rules[id][CONF_RULE_PRICE] = rule[CONF_PRICING_COST]
+        datas_rules[id][CONF_RULE_NAME] = f"{power}_{rule[CONF_PRICING_NAME]}".lower()
 
     return datas_rules
 
@@ -202,7 +212,7 @@ async def async_service_load_datas_history(
         .replace(tzinfo=dt_util.UTC)
         .date()
         if stat.get(statistic_id)
-        else call.data[CONF_END_DATE]
+        else call.data[CONF_END_DATE] + timedelta(days=1)
     )
 
     rules = {
@@ -210,6 +220,7 @@ async def async_service_load_datas_history(
             CONF_RULE_NAME: power,
             CONF_RULE_PRICE: cost,
             CONF_RULE_PERIOD: [("00:00:00", "00:00:00")],
+            CONF_DISABLED: True,
         }
     }
 

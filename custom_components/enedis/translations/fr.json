@@ -4,10 +4,14 @@
         "step": {
             "user": {
                 "title": "Enregistre ton compte Enedis Gateway",
-                "description": "Pour démarrer la collecte, il est nécessaire d'effectuer les paramétrages via les options.",
+                "description": "L'abonnement Tempo calculera automatique les réduction sur les périodes BLUE/WHITE/RED. (voir options)",
                 "data": {
                     "pdl": "PDL",
-                    "token": "Jeton"
+                    "token": "Jeton",
+                    "ecowatt": "Active le sensor Ecowatt",
+                    "tempo_day": "Abonnement Tempo",
+                    "production": "Activer la collecte de la production d'énergie",
+                    "consumption": "Activer la collecte de la consommation d'énergie"                  
                 }
             }
         },
@@ -22,30 +26,64 @@
     "options": {
         "step": {
             "init": {
-                "title": "Options",
-                "description": "La tarification personnalisée est disponible en mode Consommation: détaillé.",
+                "title": "Enedis options",
+                "menu_options": {
+                    "authentication": "Authentification",
+                    "production": "Production",
+                    "consumption": "Consommation",
+                    "save": "Sauvegarder & Sortir"
+                }      
+            },            
+            "authentication": {
+                "title": "Authentification",
                 "data": {
                     "token": "Jeton",
-                    "ecowatt": "Active le sensor Ecowatt",
-                    "tempo_day": "Obtenir le jour Tempo",                    
-                    "config_consumption": "Collecter les données de consommation.",
-                    "consumption_cost": "Tarif horaire",
-                    "config_production": "Collecter des données de production (solaire, éolien..)",
-                    "production_cost": "Tarif horaire (rachat)"
+                    "ecowatt": "Active le sensor Ecowatt"
                 }
             },
+            "consumption": {
+                "title": "Consommation",
+                "description": "Sélectionner le type de collecte et créer une plage de tarification.",
+                "data": {
+                    "service": "Service",
+                    "tempo_day": "Obtenir le jour Tempo",
+                    "pricing_new_id":"Ajouter une nouvelle tarification"
+                }
+            },
+            "production": {
+                "title": "Production",
+                "description": "Sélectionner le type de collecte et créer une plage de tarification.",
+                "data": {
+                    "service": "Service",
+                    "pricing_new_id":"Ajouter une nouvelle tarification"
+                }
+            },             
+            "pricings": {
+                "title": "Ajouter une tarification",
+                "description": "Une tarification peut contenir plusieurs plages de horaires à la consommation soit positionné sur Journalier",
+                "data": {
+                    "pricing_name": "Nom",
+                    "pricing_cost": "Tarif",
+                    "pricing_delete": "Effacer cette tarification",
+                    "step_id": "Service",
+                    "pricing_id": "Id",
+                    "BLUE":"Tarif bleu",
+                    "WHITE":"Tarif blanc",
+                    "RED":"Tarif rouge"                                        
+                }
+            },            
             "rules": {
                 "title": "Ajouter une nouvelle plage horaire",
-                "description": "Permet de déclarer une plage pour une tarification spécifique.\n Attention la consommation doit être en mode détaillé",
+                "description": "Permet de déclarer une plage horaire pour cette tarification.",
                 "data": {
                     "rule_id": "Id",
-                    "rule_name": "Nom",
+                    "period_id": "Période",
+                    "step_id": "Service",
                     "rule_start_time":"Heure de début",
                     "rule_end_time":"Heure de fin",
-                    "rule_price":"Prix",
                     "rule_delete": "Effacer cette plage horaire"
                 }
-            }            
+            }
         },
         "error": {
             "syntax_error": "Erreur de syntax"

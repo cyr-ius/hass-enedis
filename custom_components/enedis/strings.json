@@ -7,7 +7,11 @@
                 "description": "To start the collection, it is necessary to make the settings via the options.",
                 "data": {
                     "pdl": "pdl",
-                    "token": "token"
+                    "token": "token",
+                    "ecowatt": "Enable Ecowatt sensor",
+                    "tempo_day": "Tempo subscription",
+                    "production": "Enable daily production sensor",
+                    "consumption": "Enable daily consumption sensor"                               
                 }
             }
         },
@@ -23,28 +27,58 @@
         "step": {
             "init": {
                 "title": "Enedis options",
-                "description": "Off-peak and peak hours only if consumption is detail",
+                "menu_options": {
+                    "authentication": "Authentication",
+                    "production": "Production",
+                    "consumption": "Consumption",
+                    "save": "Save & Exit"
+                }  
+            },
+            "authentication": {
+                "title": "Authentication",
                 "data": {
-                    "token": "token",
-                    "ecowatt": "Enable Ecowatt sensor",
-                    "tempo_day": "Enable Tempo day sensor",
-                    "config_consumption": "Enable fetch Consumption datas (recommanded)",
-                    "consumption_cost": "Consumption cost",
-                    "config_production": "Enable fetch Production datas (recommanded)",
-                    "production_cost": "Production cost",
-                    "offpeak_cost": "Off-peak hours price",
-                    "peak_cost": "Peak hours price"
+                    "token": "Token",
+                    "ecowatt": "Enable Ecowatt sensor"
                 }
             },
+            "consumption": {
+                "title": "Consumption",
+                "data": {
+                    "tempo_day": "Enable Tempo day sensor",
+                    "service": "Service",
+                    "pricing_new_id":"Add pricing"
+                }
+            },
+            "production": {
+                "title": "Production",
+                "data": {
+                    "service": "Service",
+                    "pricing_new_id":"Add pricing"
+                }
+            },            
+            "pricings": {
+                "title": "Add pricing",
+                "description": "A pricing contain multiple tarification range",
+                "data": {
+                    "pricing_name": "Name",
+                    "pricing_cost": "Cost",
+                    "pricing_delete": "Delete this pricing",
+                    "step_id": "Service",
+                    "pricing_id": "Id",
+                    "BLUE":"Blue cost",
+                    "WHITE":"White cost",
+                    "RED":"Red cost"
+                }
+            },            
             "rules": {
                 "title": "Add new range",
                 "description": "Add new range for tarification",
                 "data": {
-                    "rule_id": "Id",
-                    "rule_name": "Name",
+                    "rule_id": "Rule id",
+                    "pricing_id": "Pricing id",
+                    "step_id": "Service",
                     "rule_start_time": "Start time",
                     "rule_end_time": "End time",
-                    "rule_price": "Price",
                     "rule_delete": "Delete this range"
                 }
             }
