@@ -54,4 +54,4 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self):
         """Value power."""
-        return self.coordinator.data.get(ACCESS).get("valid", False) is False
+        return self.coordinator.data.get(ACCESS, {}).get("valid", False) is False
