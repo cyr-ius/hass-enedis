@@ -100,7 +100,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         return statistics
 
-    async def _async_datas_collect(self, tempo_day: str):
+    async def _async_datas_collect(self, tempo_day: str | None = None):
         """Prepare data."""
         datas_collected = []
         production = self.entry.options.get(CONF_PRODUCTION, {})
@@ -148,4 +148,4 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
             datas_collected.append({CONF_DATASET: dataset, CONF_RULES: rules})
 
-            return datas_collected
+        return datas_collected
