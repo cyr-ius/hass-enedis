@@ -59,12 +59,12 @@ from .const import (
 )
 
 PRODUCTION_CHOICE = [
-    SelectOptionDict(value=PRODUCTION_DAILY, label="Journalier"),
-    SelectOptionDict(value=PRODUCTION_DETAIL, label="Détaillé"),
+    SelectOptionDict(value=PRODUCTION_DAILY, label="daily"),
+    SelectOptionDict(value=PRODUCTION_DETAIL, label="detail"),
 ]
 CONSUMPTION_CHOICE = [
-    SelectOptionDict(value=CONSUMPTION_DAILY, label="Journalier"),
-    SelectOptionDict(value=CONSUMPTION_DETAIL, label="Détaillé"),
+    SelectOptionDict(value=CONSUMPTION_DAILY, label="daily"),
+    SelectOptionDict(value=CONSUMPTION_DETAIL, label="detail"),
 ]
 
 
@@ -185,12 +185,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
         """Production step."""
         step_id = PRODUCTION
-        pricing = self._datas[step_id].get(CONF_PRICINGS, {})
-        pricing_list = {
-            pricing_id: f"{v.get(CONF_PRICING_NAME)} - {v.get(CONF_PRICING_COST)}"
-            for pricing_id, v in pricing.items()
-        }
-        pricings = {CONF_PRICE_NEW_ID: "Add new pricing", **pricing_list}
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -203,9 +197,15 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                         options=PRODUCTION_CHOICE,
                         mode=SelectSelectorMode.DROPDOWN,
                         custom_value=True,
+                        translation_key="production_choice",
                     )
                 ),
-                vol.Optional(CONF_PRICINGS): vol.In(pricings),
+                vol.Optional(CONF_PRICINGS): SelectSelector(
+                    SelectSelectorConfig(
+                        options=self.get_pricing_list(step_id),
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
             }
         )
         if user_input is not None:
@@ -220,12 +220,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
         """Consumption step."""
         step_id = CONSUMPTION
-        pricing = self._datas[step_id].get(CONF_PRICINGS, {})
-        pricing_list = {
-            pricing_id: f"{v.get(CONF_PRICING_NAME)} - {v.get(CONF_PRICING_COST)}"
-            for pricing_id, v in pricing.items()
-        }
-        pricings = {CONF_PRICE_NEW_ID: "Add new pricing", **pricing_list}
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -242,9 +236,15 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                         options=CONSUMPTION_CHOICE,
                         mode=SelectSelectorMode.DROPDOWN,
                         custom_value=True,
+                        translation_key="production_choice",
                     )
                 ),
-                vol.Optional(CONF_PRICINGS): vol.In(pricings),
+                vol.Optional(CONF_PRICINGS): SelectSelector(
+                    SelectSelectorConfig(
+                        options=self.get_pricing_list(step_id),
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
             }
         )
         if user_input is not None:
@@ -317,7 +317,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                             }
                         )
 
-                    self._datas[step_id][CONF_PRICINGS].update(**pricings)
+                    self._datas[step_id][CONF_PRICINGS] = pricings
 
                     if rule_id := user_input.get(CONF_RULES):
                         return await self.async_step_rules(
@@ -332,60 +332,38 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     @callback
     def _async_pricings_form(self, pricing_id: str, step_id: str) -> FlowResult:
         """Return configuration form for rules."""
-        _rules = (
-            self._datas[step_id]
-            .get(CONF_PRICINGS, {})
-            .get(pricing_id, {})
-            .get(CONF_PRICING_INTERVALS, {})
-        )
-        rules_list = {
-            rule_id: f"{v.get(CONF_RULE_START_TIME)} - {v.get(CONF_RULE_END_TIME)}"
-            for rule_id, v in _rules.items()
-        }
-        rules = {CONF_RULE_NEW_ID: "Add new", **rules_list}
-
-        _datas = self._datas[step_id].get(CONF_PRICINGS, {})
         schema = {
             vol.Required("step_id"): step_id,
-            vol.Optional(
-                CONF_PRICING_NAME,
-                description={
-                    "suggested_value": _datas.get(pricing_id, {}).get(CONF_PRICING_NAME)
-                },
-            ): str,
-            vol.Optional(
-                CONF_PRICING_COST,
-                description={
-                    "suggested_value": _datas.get(pricing_id, {}).get(CONF_PRICING_COST)
-                },
-            ): cv.positive_float,
+            vol.Optional(CONF_PRICING_NAME): str,
         }
-
+        standard_schema = {
+            vol.Optional(CONF_PRICING_COST): cv.positive_float,
+        }
         tempo_schema = {
-            vol.Optional(
-                "BLUE",
-                description={"suggested_value": _datas.get(pricing_id, {}).get("BLUE")},
-            ): cv.positive_float,
-            vol.Optional(
-                "WHITE",
-                description={
-                    "suggested_value": _datas.get(pricing_id, {}).get("WHITE")
-                },
-            ): cv.positive_float,
-            vol.Optional(
-                "RED",
-                description={"suggested_value": _datas.get(pricing_id, {}).get("RED")},
-            ): cv.positive_float,
+            vol.Optional("BLUE"): cv.positive_float,
+            vol.Optional("WHITE"): cv.positive_float,
+            vol.Optional("RED"): cv.positive_float,
         }
 
         if self._datas[step_id].get(CONF_TEMPO):
-            schema.pop(CONF_PRICING_COST)
             schema.update(tempo_schema)
+        else:
+            schema.update(standard_schema)
 
-        schema.update({vol.Optional(CONF_RULES): vol.In(rules)})
+        schema.update(
+            {
+                vol.Optional(CONF_RULES): SelectSelector(
+                    SelectSelectorConfig(
+                        options=self.get_intervals(step_id, pricing_id),
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
 
+        pricings = self._datas[step_id].get(CONF_PRICINGS, {})
         if pricing_id == CONF_PRICE_NEW_ID:
-            id = int(max(_datas.keys())) + 1 if _datas.keys() else 1
+            id = int(max(pricings.keys())) + 1 if pricings.keys() else 1
             data_schema = vol.Schema({vol.Required(CONF_PRICING_ID): str(id), **schema})
         else:
             data_schema = vol.Schema(
@@ -393,7 +371,11 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             )
 
         return self.async_show_form(
-            step_id="pricings", data_schema=data_schema, last_step=False
+            step_id="pricings",
+            data_schema=self.add_suggested_values_to_schema(
+                data_schema, pricings.get(pricing_id, {})
+            ),
+            last_step=False,
         )
 
     async def async_step_rules(
@@ -440,31 +422,21 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         self, rule_id: str, pricing_id: str, step_id: str
     ) -> FlowResult:
         """Return configuration form for rules."""
-        _datas = (
+        intervals = (
             self._datas.get(step_id, {})
             .get(CONF_PRICINGS, {})
             .get(pricing_id, {})
             .get(CONF_PRICING_INTERVALS)
         )
-
         schema = {
             vol.Required("step_id"): step_id,
             vol.Required(CONF_PRICING_ID): pricing_id,
-            vol.Optional(
-                CONF_RULE_START_TIME,
-                description={
-                    "suggested_value": _datas.get(rule_id, {}).get(CONF_RULE_START_TIME)
-                },
-            ): TimeSelector(TimeSelectorConfig()),
-            vol.Optional(
-                CONF_RULE_END_TIME,
-                description={
-                    "suggested_value": _datas.get(rule_id, {}).get(CONF_RULE_END_TIME)
-                },
-            ): TimeSelector(TimeSelectorConfig()),
+            vol.Optional(CONF_RULE_START_TIME): TimeSelector(TimeSelectorConfig()),
+            vol.Optional(CONF_RULE_END_TIME): TimeSelector(TimeSelectorConfig()),
         }
+
         if rule_id == CONF_RULE_NEW_ID:
-            id = int(max(_datas.keys())) + 1 if _datas.keys() else 1
+            id = int(max(intervals.keys())) + 1 if intervals.keys() else 1
             data_schema = vol.Schema({vol.Required(CONF_RULE_ID): str(id), **schema})
         else:
             data_schema = vol.Schema(
@@ -472,8 +444,48 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             )
 
         return self.async_show_form(
-            step_id="rules", data_schema=data_schema, last_step=False
+            step_id="rules",
+            data_schema=self.add_suggested_values_to_schema(
+                data_schema, intervals.get(rule_id, {})
+            ),
+            last_step=False,
         )
+
+    def get_pricing_list(self, step_id: str) -> dict[str, Any]:
+        """Return pricing list."""
+        list_pricing = [
+            SelectOptionDict(
+                value=pricing_id,
+                label=f"{v.get(CONF_PRICING_NAME)} - {v.get(CONF_PRICING_COST)}",
+            )
+            for pricing_id, v in self._datas[step_id].get(CONF_PRICINGS, {}).items()
+        ]
+        list_pricing.append(
+            SelectOptionDict(value=CONF_PRICE_NEW_ID, label="Add new pricing")
+        )
+
+        return list_pricing
+
+    def get_intervals(self, step_id: str, pricing_id: str) -> dict[str, Any]:
+        """Return intervals."""
+        intervals = (
+            self._datas[step_id]
+            .get(CONF_PRICINGS, {})
+            .get(pricing_id, {})
+            .get(CONF_PRICING_INTERVALS, {})
+        )
+        list_intervals = [
+            SelectOptionDict(
+                value=rule_id,
+                label=f"{v.get(CONF_RULE_START_TIME)} - {v.get(CONF_RULE_END_TIME)}",
+            )
+            for rule_id, v in intervals.items()
+        ]
+        list_intervals.append(
+            SelectOptionDict(value=CONF_RULE_NEW_ID, label="Add new interval")
+        )
+
+        return list_intervals
 
 
 def default_settings(datas: dict[str, Any]):

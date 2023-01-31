@@ -88,5 +88,19 @@
         "error": {
             "syntax_error": "Erreur de syntax"
         }        
-    }
+    },
+    "selector": {
+        "consumption_choice": {
+          "options": {
+            "daily": "Journalier",
+            "detail": "Détaillé"
+          }
+        },
+        "production_choice": {
+            "options": {
+              "daily": "Journalier",
+              "detail": "Détaillé"
+            }
+        }
+    }    
 }
