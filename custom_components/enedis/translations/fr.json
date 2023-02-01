@@ -9,7 +9,7 @@
                     "pdl": "PDL",
                     "token": "Jeton",
                     "ecowatt": "Active le sensor Ecowatt",
-                    "tempo_day": "Abonnement Tempo",
+                    "bool_tempo": "Abonnement Tempo",
                     "production": "Activer la collecte de la production d'énergie",
                     "consumption": "Activer la collecte de la consommation d'énergie"                  
                 }
@@ -46,7 +46,7 @@
                 "description": "Sélectionner le type de collecte et créer une plage de tarification.",
                 "data": {
                     "service": "Service",
-                    "tempo_day": "Obtenir le jour Tempo",
+                    "bool_tempo": "Obtenir le jour Tempo",
                     "pricing_new_id":"Ajouter une nouvelle tarification"
                 }
             },
@@ -100,6 +100,11 @@
             "options": {
               "daily": "Journalier",
               "detail": "Détaillé"
+            }
+        },
+        "rules": {
+            "options": {
+                "Add new pricing": "Ajouter un nouveau tarif"
             }
         }
     }    

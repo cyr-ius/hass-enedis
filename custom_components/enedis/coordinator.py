@@ -4,36 +4,44 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 
-from myelectricaldatapy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisAnalytics, EnedisByPDL, EnedisException
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    get_last_statistics,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_TOKEN
+from homeassistant.const import CONF_TOKEN, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     ACCESS,
+    CONF_AUTH,
     CONF_CONSUMPTION,
     CONF_CONTRACT,
+    CONF_DATASET,
     CONF_ECOWATT,
     CONF_PDL,
-    CONF_PRICINGS,
+    CONF_PRICING_COST,
+    CONF_PRICING_INTERVALS,
+    CONF_PRICING_NAME,
     CONF_PRODUCTION,
+    CONF_RULE_END_TIME,
+    CONF_RULE_START_TIME,
     CONF_SERVICE,
+    CONF_STATISTIC_ID,
     CONF_TEMPO,
-    CONSUMPTION,
+    CONF_TEMPO_DETAIL,
     CONSUMPTION_DAILY,
-    CONSUMPTION_DETAIL,
     DOMAIN,
-    PRODUCTION,
     PRODUCTION_DAILY,
-    PRODUCTION_DETAIL,
-    CONF_DATASET,
-    CONF_RULES,
-    CONF_AUTH,
+    TEMPO_DAY,
 )
-from .helpers import async_fetch_datas, async_statistics, minus_date, rules_format
+from typing import Any
 
 SCAN_INTERVAL = timedelta(hours=3)
 
@@ -76,7 +84,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     self.entry.options.get(CONF_CONSUMPTION, {}).get(CONF_TEMPO)
                     and self.api.last_access
                 ):
-                    statistics.update({CONF_TEMPO: await self.api.async_get_tempoday()})
+                    statistics.update(
+                        {CONF_TEMPO_DETAIL: await self.api.async_get_tempoday()}
+                    )
                 # Get ecowatt information
                 if self.entry.options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
                     statistics.update(
@@ -89,9 +99,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             # Add statistics in HA Database
             str_date = datetime.now().date().strftime("%Y-%m-%d")
-            tempo_day = statistics.get(CONF_TEMPO, {}).get(str_date)
+            tempo_day = statistics.get(CONF_TEMPO_DETAIL, {}).get(str_date)
+            _LOGGER.debug("Tempo day: %s", tempo_day)
+            data_collected = await self._async_datas_collect(tempo_day)
 
-            for data in await self._async_datas_collect(tempo_day):
+            for data in data_collected:
                 _LOGGER.debug(data)
                 stats = await async_statistics(self.hass, **data)
                 statistics.update(stats)
@@ -105,47 +117,135 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         datas_collected = []
         production = self.entry.options.get(CONF_PRODUCTION, {})
         consumption = self.entry.options.get(CONF_CONSUMPTION, {})
-        if (service := production.get(CONF_SERVICE)) in [
-            PRODUCTION_DAILY,
-            PRODUCTION_DETAIL,
-        ]:
-            # Set rule
-            rules = rules_format(
-                self.pdl, PRODUCTION, production.get(CONF_PRICINGS, {})
-            )
+        end_date = datetime.now().date()
+
+        for option in [production, consumption]:
+            service = option.get(CONF_SERVICE)
 
             start_date = (
-                minus_date(365).date()
-                if service in [PRODUCTION_DAILY]
-                else minus_date(6).date()
-            )
-            end_date = datetime.now().date()
-
-            # Fetch production datas
-            dataset = await async_fetch_datas(
-                self.api, self.pdl, service, start_date, end_date
-            )
-            datas_collected.append({CONF_DATASET: dataset, CONF_RULES: rules})
-
-        if (service := consumption.get(CONF_SERVICE)) in [
-            CONSUMPTION_DAILY,
-            CONSUMPTION_DETAIL,
-        ]:
-            # Set rule
-            rules = rules_format(
-                self.pdl, CONSUMPTION, consumption.get(CONF_PRICINGS, {}), tempo_day
+                self.minus_date(365).date()
+                if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
+                else self.minus_date(6).date()
             )
 
-            start_date = (
-                minus_date(365).date()
-                if service in [CONSUMPTION_DAILY]
-                else minus_date(6).date()
+            # Fetch datas
+            dataset = {}
+            try:
+                dataset = await self.api.async_fetch_datas(
+                    service, self.pdl, start_date, end_date
+                )
+            except EnedisException as error:
+                _LOGGER.error(error)
+            dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
+            datas_collected.append(
+                {TEMPO_DAY: tempo_day, CONF_DATASET: dataset, **option}
             )
-            end_date = datetime.now().date()
-            # Fetch consumption datas
-            dataset = await async_fetch_datas(
-                self.api, self.pdl, service, start_date, end_date
-            )
-            datas_collected.append({CONF_DATASET: dataset, CONF_RULES: rules})
 
         return datas_collected
+
+    def minus_date(self, days: int) -> datetime:
+        """Substract now."""
+        return datetime.now() - timedelta(days=days)
+
+
+async def async_statistics(
+    hass: HomeAssistant, dataset: dict, no_update: bool = False, **kwargs: Any
+):
+    """Compute statistics."""
+    global_statistics = {}
+    pricings = kwargs.get("pricings", {})
+    tempo_day = kwargs.get(TEMPO_DAY)
+
+    for pricing in pricings.values():
+        statistic_id = pricing[CONF_STATISTIC_ID]
+        name = pricing[CONF_PRICING_NAME]
+        intervals = [
+            (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+            for interval in pricing[CONF_PRICING_INTERVALS].values()
+        ]
+        price = (
+            pricing[tempo_day]
+            if tempo_day and pricing.get(tempo_day)
+            else pricing[CONF_PRICING_COST]
+        )
+
+        _LOGGER.debug("%s stat", statistic_id)
+
+        # Fetch last information in database
+        last_stats = await get_instance(hass).async_add_executor_job(
+            get_last_statistics, hass, 1, statistic_id, True, "sum"
+        )
+
+        # Fetch last sum in database
+        summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
+
+        # Fetch last time in database
+        last_stats_time = (
+            None
+            if not last_stats
+            else last_stats[statistic_id][0]["start"].strftime("%Y-%m-%d")
+        )
+        _LOGGER.debug("Start date > %s", last_stats_time)
+
+        analytics = EnedisAnalytics(dataset)
+        datas_collected = analytics.get_data_analytcis(
+            convertKwh=True,
+            convertUTC=True,
+            start_date=last_stats_time,
+            intervals=intervals,
+            groupby="date",
+            freq="D",
+            summary=True,
+            cumsum=summary,
+        )
+
+        datas_collected = analytics.set_price(datas_collected, price, True)
+        _LOGGER.debug(datas_collected)
+
+        if sum_value := analytics.get_last_value(datas_collected, "date", "sum_value"):
+            summary = sum_value
+
+        if no_update is False:
+            global_statistics.update({name: summary})
+
+        stats = []
+        costs = []
+        for datas in datas_collected:
+            stats.append(
+                StatisticData(
+                    start=datas["date"], state=datas["value"], sum=datas["sum_value"]
+                )
+            )
+            costs.append(
+                StatisticData(
+                    start=datas["date"], state=datas["price"], sum=datas["sum_price"]
+                )
+            )
+
+        if stats and costs:
+            _LOGGER.debug("Add %s stat in table", name)
+            metadata = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=name,
+                source=DOMAIN,
+                statistic_id=statistic_id,
+                unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+            )
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, metadata, stats
+            )
+            _LOGGER.debug("Add %s cost in table", name)
+            metacost = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=f"{name}_cost",
+                source=DOMAIN,
+                statistic_id=f"{statistic_id}_cost",
+                unit_of_measurement="EUR",
+            )
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, metacost, costs
+            )
+
+    return global_statistics

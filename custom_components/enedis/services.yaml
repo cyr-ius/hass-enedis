@@ -12,15 +12,15 @@ fetch_datas:
     power_mode:
       name: Power type
       required: true
-      default: daily_consumption
+      default: consumption
       selector:
         select:
           mode: dropdown
           options:
             - label: Consumption
-              value: daily_consumption
+              value: consumption
             - label: Production
-              value: daily_production
+              value: production
     start_date:
       name: Start Date
       description: Start date

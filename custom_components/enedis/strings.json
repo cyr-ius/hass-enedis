@@ -9,7 +9,7 @@
                     "pdl": "pdl",
                     "token": "token",
                     "ecowatt": "Enable Ecowatt sensor",
-                    "tempo_day": "Tempo subscription",
+                    "bool_tempo": "Tempo subscription",
                     "production": "Enable daily production sensor",
                     "consumption": "Enable daily consumption sensor"                               
                 }
@@ -44,7 +44,7 @@
             "consumption": {
                 "title": "Consumption",
                 "data": {
-                    "tempo_day": "Enable Tempo day sensor",
+                    "bool_tempo": "Enable Tempo day sensor",
                     "service": "Service",
                     "pricing_new_id":"Add pricing"
                 }
@@ -99,6 +99,11 @@
                 "daily": "Daily",
                 "detail": "Detail"
             }
-        }
+        },
+        "rules": {
+            "options": {
+                "Add new pricing": "Add new princing"
+            }
+        }        
     }
 }

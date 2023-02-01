@@ -3,41 +3,14 @@ from __future__ import annotations
 
 import logging
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant
 
-from .const import (
-    CONF_POWER_MODE,
-    CONF_STATISTIC_ID,
-    DOMAIN,
-    PLATFORMS,
-    FETCH_SERVICE,
-    CLEAR_SERVICE,
-    CONF_ENTRY,
-    CONF_START_DATE,
-    CONF_END_DATE,
-)
+from .const import DOMAIN, PLATFORMS
 from .coordinator import EnedisDataUpdateCoordinator
-from .helpers import async_service_load_datas_history, async_service_datas_clear
+from .services import async_services
 
 _LOGGER = logging.getLogger(__name__)
-
-HISTORY_SERVICE_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_ENTRY): str,
-        vol.Optional(CONF_POWER_MODE): str,
-        vol.Optional(CONF_START_DATE): cv.date,
-        vol.Optional(CONF_END_DATE): cv.date,
-    }
-)
-CLEAR_SERVICE_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_STATISTIC_ID): str,
-    }
-)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -50,18 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def async_reload_history(call: ServiceCall) -> None:
-        await async_service_load_datas_history(hass, coordinator.api, call)
-
-    async def async_clear(call: ServiceCall) -> None:
-        await async_service_datas_clear(hass, call)
-
-    hass.services.async_register(
-        DOMAIN, FETCH_SERVICE, async_reload_history, schema=HISTORY_SERVICE_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, CLEAR_SERVICE, async_clear, schema=CLEAR_SERVICE_SCHEMA
-    )
+    await async_services(hass, entry, coordinator)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 

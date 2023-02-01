@@ -22,7 +22,6 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    AUTH,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
     CONF_PDL,
@@ -42,7 +41,6 @@ from .const import (
     CONF_RULES,
     CONF_SERVICE,
     CONF_TEMPO,
-    CONSUMPTION,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     DEFAULT_CC_PRICE,
@@ -51,11 +49,11 @@ from .const import (
     DEFAULT_PRODUCTION,
     DEFAULT_CONSUMPTION_TEMPO,
     DOMAIN,
-    PRODUCTION,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
     SAVE,
     CONF_AUTH,
+    CONF_STATISTIC_ID,
 )
 
 PRODUCTION_CHOICE = [
@@ -139,13 +137,13 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
-        _auth: dict[str, Any] = config_entry.options.get("auth", {})
-        _production: dict[str, Any] = config_entry.options.get(PRODUCTION, {})
-        _consumption: dict[str, Any] = config_entry.options.get(CONSUMPTION, {})
+        _auth: dict[str, Any] = config_entry.options.get(CONF_AUTH, {})
+        _production: dict[str, Any] = config_entry.options.get(CONF_PRODUCTION, {})
+        _consumption: dict[str, Any] = config_entry.options.get(CONF_CONSUMPTION, {})
         self._datas = {
-            AUTH: _auth.copy(),
-            PRODUCTION: _production.copy(),
-            CONSUMPTION: _consumption.copy(),
+            CONF_AUTH: _auth.copy(),
+            CONF_PRODUCTION: _production.copy(),
+            CONF_CONSUMPTION: _consumption.copy(),
         }
         self._conf_rule_id: int | None = None
         self._conf_pricing_id: int | None = None
@@ -155,12 +153,13 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Handle options flow."""
         return self.async_show_menu(
-            step_id="init", menu_options=[AUTH, PRODUCTION, CONSUMPTION, SAVE]
+            step_id="init",
+            menu_options=[CONF_AUTH, CONF_PRODUCTION, CONF_CONSUMPTION, SAVE],
         )
 
     async def async_step_authentication(self, user_input: dict[str, Any] | None = None):
         """Authentification step."""
-        step_id = AUTH
+        step_id = CONF_AUTH
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -184,7 +183,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
         """Production step."""
-        step_id = PRODUCTION
+        step_id = CONF_PRODUCTION
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -219,7 +218,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
     async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
         """Consumption step."""
-        step_id = CONSUMPTION
+        step_id = CONF_CONSUMPTION
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -236,7 +235,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                         options=CONSUMPTION_CHOICE,
                         mode=SelectSelectorMode.DROPDOWN,
                         custom_value=True,
-                        translation_key="production_choice",
+                        translation_key="consumption_choice",
                     )
                 ),
                 vol.Optional(CONF_PRICINGS): SelectSelector(
@@ -303,6 +302,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                                     user_input.get(CONF_PRICING_COST, default_price)
                                 ),
                                 CONF_PRICING_INTERVALS: intervals,
+                                CONF_STATISTIC_ID: f"{DOMAIN}:{self.config_entry.data[CONF_PDL]}_{step_id}_{user_input.get(CONF_PRICING_NAME)}".lower(),
                             }
                         }
                     )
@@ -324,7 +324,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                             rule_id=rule_id, pricing_id=pricing_id, step_id=step_id
                         )
 
-        if step_id == CONSUMPTION:
+        if step_id == CONF_CONSUMPTION:
             return await self.async_step_consumption()
         else:
             return await self.async_step_production()
@@ -356,6 +356,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     SelectSelectorConfig(
                         options=self.get_intervals(step_id, pricing_id),
                         mode=SelectSelectorMode.LIST,
+                        translation_key=CONF_RULES,
                     )
                 ),
             }
@@ -490,16 +491,16 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
 def default_settings(datas: dict[str, Any]):
     """Set default datas if missing."""
-    production = datas.get(PRODUCTION)
+    production = datas.get(CONF_PRODUCTION)
     if production.get(CONF_SERVICE) and len(production.get(CONF_PRICINGS, {})) == 0:
-        datas[PRODUCTION][CONF_PRICINGS] = DEFAULT_PRODUCTION
+        datas[CONF_PRODUCTION][CONF_PRICINGS] = DEFAULT_PRODUCTION
 
-    consumption = datas.get(CONSUMPTION)
+    consumption = datas.get(CONF_CONSUMPTION)
     if consumption.get(CONF_SERVICE) and len(consumption.get(CONF_PRICINGS, {})) == 0:
-        datas[CONSUMPTION][CONF_PRICINGS] = DEFAULT_CONSUMPTION
+        datas[CONF_CONSUMPTION][CONF_PRICINGS] = DEFAULT_CONSUMPTION
 
     if consumption.get(CONF_TEMPO) and len(consumption.get(CONF_PRICINGS, {})) == 0:
-        datas[CONSUMPTION] = {
+        datas[CONF_CONSUMPTION] = {
             CONF_SERVICE: CONSUMPTION_DETAIL,
             CONF_TEMPO: consumption.get(CONF_TEMPO),
             CONF_PRICINGS: DEFAULT_CONSUMPTION_TEMPO,
