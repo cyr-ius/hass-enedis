@@ -19,6 +19,7 @@ from .const import (
     CONF_AUTH,
     CONF_END_DATE,
     CONF_ENTRY,
+    CONF_PDL,
     CONF_POWER_MODE,
     CONF_SERVICE,
     CONF_START_DATE,
@@ -54,7 +55,9 @@ async def async_services(
     async def async_reload_history(call: ServiceCall) -> None:
         """Load datas in statics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
-        option = entry.config_entry.options.get(call.data[CONF_POWER_MODE], {})
+        power_mode = call.data[CONF_POWER_MODE]
+        option = entry.config_entry.options.get(power_mode, {})
+        option.update({CONF_POWER_MODE: power_mode, CONF_PDL: entry.pdl})
 
         # Fetch datas
         dataset = {}

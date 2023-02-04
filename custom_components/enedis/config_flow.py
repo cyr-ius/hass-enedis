@@ -53,7 +53,6 @@ from .const import (
     PRODUCTION_DETAIL,
     SAVE,
     CONF_AUTH,
-    CONF_STATISTIC_ID,
 )
 
 PRODUCTION_CHOICE = [
@@ -302,7 +301,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                                     user_input.get(CONF_PRICING_COST, default_price)
                                 ),
                                 CONF_PRICING_INTERVALS: intervals,
-                                CONF_STATISTIC_ID: f"{DOMAIN}:{self.config_entry.data[CONF_PDL]}_{step_id}_{user_input.get(CONF_PRICING_NAME)}".lower(),
                             }
                         }
                     )

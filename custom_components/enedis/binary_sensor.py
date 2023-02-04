@@ -13,7 +13,7 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ACCESS, DOMAIN
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator):
         """Initialize the sensor."""
         super().__init__(coordinator)
-        access = coordinator.data.get(ACCESS, {})
+        access = coordinator.access
         self._attr_unique_id = f"{coordinator.pdl}_token_expire"
         self._attr_extra_state_attributes = {
             "Call number": access.get("call_number"),
@@ -54,4 +54,4 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self):
         """Value power."""
-        return self.coordinator.data.get(ACCESS, {}).get("valid", False) is False
+        return self.coordinator.access.get("valid", False) is False

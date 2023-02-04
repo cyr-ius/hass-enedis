@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
+from typing import Any
 
 from myelectricaldatapy import EnedisAnalytics, EnedisByPDL, EnedisException
 
@@ -19,13 +20,12 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
-    ACCESS,
     CONF_AUTH,
     CONF_CONSUMPTION,
-    CONF_CONTRACT,
     CONF_DATASET,
     CONF_ECOWATT,
     CONF_PDL,
+    CONF_POWER_MODE,
     CONF_PRICING_COST,
     CONF_PRICING_INTERVALS,
     CONF_PRICING_NAME,
@@ -33,15 +33,13 @@ from .const import (
     CONF_RULE_END_TIME,
     CONF_RULE_START_TIME,
     CONF_SERVICE,
-    CONF_STATISTIC_ID,
     CONF_TEMPO,
-    CONF_TEMPO_DETAIL,
     CONSUMPTION_DAILY,
+    CONSUMPTION_DETAIL,
     DOMAIN,
     PRODUCTION_DAILY,
     TEMPO_DAY,
 )
-from typing import Any
 
 SCAN_INTERVAL = timedelta(hours=3)
 
@@ -57,6 +55,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self.pdl: str = entry.data[CONF_PDL]
+        self.access: dict[str, Any] = {}
+        self.contract: dict[str, Any] = {}
+        self.access: dict[str, Any] = {}
+        self.tempo: dict[str, Any] = {}
+        self.tempo_day: dict[str, Any] = {}
+        self.ecowatt: dict[str, Any] = {}
+        self.ecowatt_day: str | None = None
         token: str = (
             entry.options[CONF_AUTH][CONF_TOKEN]
             if entry.options.get(CONF_AUTH, {}).get(CONF_TOKEN)
@@ -69,40 +74,38 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
-        statistics = {}
         try:
             # Check  has a valid access
-            statistics.update({ACCESS: await self.api.async_valid_access(self.pdl)})
+            self.access = await self.api.async_valid_access(self.pdl)
 
             if self.last_access is None or self.last_access < datetime.now().date():
                 # Get contract
-                statistics.update(
-                    {CONF_CONTRACT: await self.api.async_get_contract(self.pdl)}
-                )
+                self.contract = await self.api.async_get_contract(self.pdl)
+
+                str_date = datetime.now().date().strftime("%Y-%m-%d")
                 # Get tempo day
                 if (
                     self.entry.options.get(CONF_CONSUMPTION, {}).get(CONF_TEMPO)
                     and self.api.last_access
                 ):
-                    statistics.update(
-                        {CONF_TEMPO_DETAIL: await self.api.async_get_tempoday()}
-                    )
+                    self.tempo = await self.api.async_get_tempoday()
+                    self.tempo_day = self.tempo.get(str_date, {})
+
                 # Get ecowatt information
                 if self.entry.options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
-                    statistics.update(
-                        {CONF_ECOWATT: await self.api.async_get_ecowatt()}
-                    )
+                    self.ecowatt = await self.api.async_get_ecowatt()
+                    self.ecowatt_day = self.ecowatt.get(str_date, {})
+
                 self.last_access = datetime.now().date()
         except EnedisException as error:
             _LOGGER.error(error)
 
+        statistics = {}
         try:
-            # Add statistics in HA Database
-            str_date = datetime.now().date().strftime("%Y-%m-%d")
-            tempo_day = statistics.get(CONF_TEMPO_DETAIL, {}).get(str_date)
-            _LOGGER.debug("Tempo day: %s", tempo_day)
-            data_collected = await self._async_datas_collect(tempo_day)
+            # Fetch datas
+            data_collected = await self._async_datas_collect(self.tempo_day)
 
+            # Add statistics in HA Database
             for data in data_collected:
                 _LOGGER.debug(data)
                 stats = await async_statistics(self.hass, **data)
@@ -128,6 +131,12 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 else self.minus_date(6).date()
             )
 
+            power_mode = (
+                CONF_CONSUMPTION
+                if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
+                else CONF_PRODUCTION
+            )
+
             # Fetch datas
             dataset = {}
             try:
@@ -138,7 +147,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error(error)
             dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
             datas_collected.append(
-                {TEMPO_DAY: tempo_day, CONF_DATASET: dataset, **option}
+                {
+                    CONF_POWER_MODE: power_mode,
+                    CONF_PDL: self.pdl,
+                    TEMPO_DAY: tempo_day,
+                    CONF_DATASET: dataset,
+                    **option,
+                }
             )
 
         return datas_collected
@@ -155,10 +170,12 @@ async def async_statistics(
     global_statistics = {}
     pricings = kwargs.get("pricings", {})
     tempo_day = kwargs.get(TEMPO_DAY)
+    pdl = kwargs.get(CONF_PDL)
+    power_mode = kwargs.get(CONF_POWER_MODE)
 
     for pricing in pricings.values():
-        statistic_id = pricing[CONF_STATISTIC_ID]
         name = pricing[CONF_PRICING_NAME]
+        statistic_id = f"{DOMAIN}:{pdl}_{power_mode}_{name}".lower()
         intervals = [
             (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
             for interval in pricing[CONF_PRICING_INTERVALS].values()
@@ -206,7 +223,7 @@ async def async_statistics(
             summary = sum_value
 
         if no_update is False:
-            global_statistics.update({name: summary})
+            global_statistics.update({f"{power_mode} {name}".capitalize(): summary})
 
         stats = []
         costs = []
