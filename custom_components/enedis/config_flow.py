@@ -101,7 +101,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                 timeout=30,
             )
             try:
-                await api.async_get_identity(user_input[CONF_PDL])
+                await api.async_has_access(user_input[CONF_PDL])
             except EnedisException as error:
                 _LOGGER.error(error)
                 errors["base"] = "cannot_connect"
