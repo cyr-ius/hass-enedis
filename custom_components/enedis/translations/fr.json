@@ -38,21 +38,21 @@
                 "title": "Authentification",
                 "data": {
                     "token": "Jeton",
-                    "ecowatt": "Active le sensor Ecowatt"
+                    "ecowatt": "Activer le sensor Ecowatt"
                 }
             },
             "consumption": {
                 "title": "Consommation",
-                "description": "Sélectionner le type de collecte et créer une plage de tarification.",
+                "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
                 "data": {
                     "service": "Service",
-                    "bool_tempo": "Obtenir le jour Tempo",
+                    "bool_tempo": "Abonnement Tempo",
                     "pricing_new_id":"Ajouter une nouvelle tarification"
                 }
             },
             "production": {
                 "title": "Production",
-                "description": "Sélectionner le type de collecte et créer une plage de tarification.",
+                "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
                 "data": {
                     "service": "Service",
                     "pricing_new_id":"Ajouter une nouvelle tarification"
@@ -60,7 +60,7 @@
             },             
             "pricings": {
                 "title": "Ajouter une tarification",
-                "description": "Une tarification peut contenir plusieurs plages de horaires à la consommation soit positionné sur Journalier",
+                "description": "Les plages de horaires sont optionnelles. Mais pour leurs usages, merci de mettre le service en mode 'detail'",
                 "data": {
                     "pricing_name": "Nom",
                     "pricing_cost": "Tarif",
@@ -74,7 +74,7 @@
             },            
             "rules": {
                 "title": "Ajouter une nouvelle plage horaire",
-                "description": "Permet de déclarer une plage horaire pour cette tarification.",
+                "description":"La plage horaire court de 00h00 à 23h59 par tranche de 30min\n Ex: 01:30:00 à 14:00:00",
                 "data": {
                     "rule_id": "Id",
                     "period_id": "Période",
@@ -86,7 +86,9 @@
             }
         },
         "error": {
-            "syntax_error": "Erreur de syntax"
+            "syntax_error": "Erreur de syntax",
+            "time_error": "L'heure de début est plus grande que l'heure de fin",
+            "interval_time_error": "Les minutes ne sont pas des multiples de 30min"
         }        
     },
     "selector": {
@@ -102,10 +104,15 @@
               "detail": "Détaillé"
             }
         },
-        "rules": {
+        "pricing_key": {
             "options": {
                 "Add new pricing": "Ajouter un nouveau tarif"
             }
-        }
+        },
+        "interval_key": {
+            "options": {
+                "Add new pricing": "Ajouter une nouvelle plage"
+            }
+        }             
     }    
 }

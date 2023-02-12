@@ -241,6 +241,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     SelectSelectorConfig(
                         options=self.get_pricing_list(step_id),
                         mode=SelectSelectorMode.LIST,
+                        translation_key="pricing_key",
                     )
                 ),
             }
@@ -354,7 +355,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                     SelectSelectorConfig(
                         options=self.get_intervals(step_id, pricing_id),
                         mode=SelectSelectorMode.LIST,
-                        translation_key=CONF_RULES,
+                        translation_key="interval_key",
                     )
                 ),
             }

@@ -84,8 +84,10 @@
         }
     },
     "error": {
-        "syntax_error": "syntax error"
-    }        
+        "syntax_error": "syntax error",
+        "time_error": "Start time is greater than end time",
+        "interval_time_error": "Minutes are not multiples of 30min"
+    }
   },
   "selector": {
     "consumption_choice": {
@@ -100,10 +102,15 @@
             "detail": "Detail"
         }
       },
-    "rules": {
+    "pricing_key": {
         "options": {
             "Add new pricing": "Add new princing"
         }
-    }          
+    },
+    "interval_key": {
+        "options": {
+            "Add new pricing": "Add new interval"
+        }
+    }           
   }    
 }
