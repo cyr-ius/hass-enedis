@@ -100,18 +100,18 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         except EnedisException as error:
             _LOGGER.error(error)
 
+        # Fetch datas
+        data_collected = await self._async_datas_collect(self.tempo_day)
+
+        # Add statistics in HA Database
         statistics = {}
         try:
-            # Fetch datas
-            data_collected = await self._async_datas_collect(self.tempo_day)
-
-            # Add statistics in HA Database
             for data in data_collected:
                 _LOGGER.debug(data)
                 stats = await async_statistics(self.hass, **data)
                 statistics.update(stats)
         except EnedisException as error:
-            _LOGGER.error(error)
+            _LOGGER.error("Update stats %s", error)
 
         return statistics
 
@@ -140,12 +140,15 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             # Fetch datas
             dataset = {}
             try:
-                dataset = await self.api.async_fetch_datas(
-                    service, self.pdl, start_date, end_date
-                )
+                if service:
+                    dataset = await self.api.async_fetch_datas(
+                        service, self.pdl, start_date, end_date
+                    )
             except EnedisException as error:
-                _LOGGER.error(error)
-            dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
+                _LOGGER.error("Fetch datas for %s (%s): %s", service, self.pdl, error)
+            finally:
+                dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
+
             datas_collected.append(
                 {
                     CONF_POWER_MODE: power_mode,
@@ -200,7 +203,9 @@ async def async_statistics(
         last_stats_time = (
             None
             if not last_stats
-            else last_stats[statistic_id][0]["start"].strftime("%Y-%m-%d")
+            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"]).strftime(
+                "%Y-%m-%d"
+            )
         )
         _LOGGER.debug("Start date > %s", last_stats_time)
 
@@ -211,7 +216,7 @@ async def async_statistics(
             start_date=last_stats_time,
             intervals=intervals,
             groupby="date",
-            freq="D",
+            freq="H",
             summary=True,
             cumsum=summary,
         )
