@@ -24,6 +24,7 @@ from .const import (
     CONF_CONSUMPTION,
     CONF_DATASET,
     CONF_ECOWATT,
+    CONF_FREQUENCY,
     CONF_PDL,
     CONF_POWER_MODE,
     CONF_PRICING_COST,
@@ -38,6 +39,7 @@ from .const import (
     CONSUMPTION_DETAIL,
     DOMAIN,
     PRODUCTION_DAILY,
+    PRODUCTION_DETAIL,
     TEMPO_DAY,
 )
 
@@ -137,6 +139,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 else CONF_PRODUCTION
             )
 
+            freq = "30T" if service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL] else "D"
+
             # Fetch datas
             dataset = {}
             try:
@@ -155,6 +159,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                     CONF_PDL: self.pdl,
                     TEMPO_DAY: tempo_day,
                     CONF_DATASET: dataset,
+                    CONF_FREQUENCY: freq,
                     **option,
                 }
             )
@@ -175,6 +180,7 @@ async def async_statistics(
     tempo_day = kwargs.get(TEMPO_DAY)
     pdl = kwargs.get(CONF_PDL)
     power_mode = kwargs.get(CONF_POWER_MODE)
+    freq = kwargs.get(CONF_FREQUENCY)
 
     for pricing in pricings.values():
         name = pricing[CONF_PRICING_NAME]
@@ -216,7 +222,7 @@ async def async_statistics(
             start_date=last_stats_time,
             intervals=intervals,
             groupby="date",
-            freq="30T",
+            freq=freq,
             summary=True,
             cumsum=summary,
         )
