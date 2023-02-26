@@ -212,11 +212,11 @@ async def async_statistics(
         analytics = EnedisAnalytics(dataset)
         datas_collected = analytics.get_data_analytcis(
             convertKwh=True,
-            convertUTC=True,
+            convertUTC=False,
             start_date=last_stats_time,
             intervals=intervals,
             groupby="date",
-            freq="H",
+            freq="30T",
             summary=True,
             cumsum=summary,
         )
