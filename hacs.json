@@ -1,6 +1,6 @@
 {
   "name": "Enedis",
   "country": "FR",
-  "homeassistant": "2023.3.0",
+  "homeassistant": "0.109",
   "render_readme": true
 }
