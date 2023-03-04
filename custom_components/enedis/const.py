@@ -44,11 +44,12 @@ PLATFORMS = ["sensor", "binary_sensor"]
 PRODUCTION_DAILY = "daily_production"
 PRODUCTION_DETAIL = "production_load_curve"
 TEMPO_DAY = "tempo_day"
+TEMPO = "dict_tempo"
 SAVE = "save"
 URL = "https://myelectricaldata.fr"
 DEFAULT_CONSUMPTION_TEMPO = {
     "1": {
-        CONF_PRICING_NAME: "Heures pleines",
+        CONF_PRICING_NAME: "Heure pleine",
         "BLUE": round(DEFAULT_HP_PRICE * 0.7, 2),
         "WHITE": round(DEFAULT_HP_PRICE * 0.9, 2),
         "RED": round(DEFAULT_HP_PRICE * 3, 2),
@@ -60,7 +61,7 @@ DEFAULT_CONSUMPTION_TEMPO = {
         },
     },
     "2": {
-        CONF_PRICING_NAME: "Heures creuse",
+        CONF_PRICING_NAME: "Heure creuse",
         "BLUE": round(DEFAULT_HC_PRICE * 0.6, 2),
         "WHITE": round(DEFAULT_HC_PRICE * 0.76, 2),
         "RED": round(DEFAULT_HC_PRICE * 0.85, 2),
@@ -78,7 +79,7 @@ DEFAULT_CONSUMPTION_TEMPO = {
 }
 DEFAULT_PRODUCTION = {
     "1": {
-        CONF_PRICING_NAME: "pdl",
+        CONF_PRICING_NAME: "Heure standard",
         CONF_PRICING_COST: DEFAULT_PC_PRICE,
         CONF_PRICING_INTERVALS: {
             "1": {
@@ -90,7 +91,7 @@ DEFAULT_PRODUCTION = {
 }
 DEFAULT_CONSUMPTION = {
     "1": {
-        CONF_PRICING_NAME: "pdl",
+        CONF_PRICING_NAME: "Heure standard",
         CONF_PRICING_COST: DEFAULT_CC_PRICE,
         CONF_PRICING_INTERVALS: {
             "1": {
