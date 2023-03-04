@@ -110,7 +110,11 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
 
         # Fetch last time in database
         last_stats_time = (
-            None if not last_stats else last_stats[statistic_id][0]["start"]
+            None
+            if not last_stats
+            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"]).strftime(
+                "%Y-%m-%d"
+            )
         )
 
         ref_date = None
