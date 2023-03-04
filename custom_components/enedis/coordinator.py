@@ -18,6 +18,7 @@ from homeassistant.const import CONF_TOKEN, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import slugify
 
 from .const import (
     CONF_AUTH,
@@ -37,10 +38,11 @@ from .const import (
     CONF_TEMPO,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
+    DEFAULT_CC_PRICE,
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
-    TEMPO_DAY,
+    TEMPO,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
@@ -61,7 +63,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.contract: dict[str, Any] = {}
         self.access: dict[str, Any] = {}
         self.tempo: dict[str, Any] = {}
-        self.tempo_day: dict[str, Any] = {}
+        self.tempo_day: str | None = None
         self.ecowatt: dict[str, Any] = {}
         self.ecowatt_day: str | None = None
         token: str = (
@@ -84,26 +86,27 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 # Get contract
                 self.contract = await self.api.async_get_contract(self.pdl)
 
-                str_date = datetime.now().date().strftime("%Y-%m-%d")
+                str_date = datetime.now().strftime("%Y-%m-%d")
                 # Get tempo day
                 if (
                     self.entry.options.get(CONF_CONSUMPTION, {}).get(CONF_TEMPO)
                     and self.api.last_access
                 ):
-                    self.tempo = await self.api.async_get_tempoday()
-                    self.tempo_day = self.tempo.get(str_date, {})
+                    dt_date = datetime.now() - timedelta(days=7)
+                    self.tempo = await self.api.async_get_tempoday(dt_date)
+                    self.tempo_day = self.tempo.get(str_date)
 
                 # Get ecowatt information
                 if self.entry.options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
                     self.ecowatt = await self.api.async_get_ecowatt()
-                    self.ecowatt_day = self.ecowatt.get(str_date, {})
+                    self.ecowatt_day = self.ecowatt.get(str_date)
 
                 self.last_access = datetime.now().date()
         except EnedisException as error:
             _LOGGER.error(error)
 
         # Fetch datas
-        data_collected = await self._async_datas_collect(self.tempo_day)
+        data_collected = await self._async_datas_collect(self.tempo)
 
         # Add statistics in HA Database
         statistics = {}
@@ -117,7 +120,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         return statistics
 
-    async def _async_datas_collect(self, tempo_day: str | None = None):
+    async def _async_datas_collect(self, tempo: dict[str, Any] | None = None):
         """Prepare data."""
         datas_collected = []
         production = self.entry.options.get(CONF_PRODUCTION, {})
@@ -157,7 +160,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 {
                     CONF_POWER_MODE: power_mode,
                     CONF_PDL: self.pdl,
-                    TEMPO_DAY: tempo_day,
+                    TEMPO: tempo,
                     CONF_DATASET: dataset,
                     CONF_FREQUENCY: freq,
                     **option,
@@ -177,33 +180,33 @@ async def async_statistics(
     """Compute statistics."""
     global_statistics = {}
     pricings = kwargs.get("pricings", {})
-    tempo_day = kwargs.get(TEMPO_DAY)
+    tempo = kwargs.get(TEMPO)
     pdl = kwargs.get(CONF_PDL)
     power_mode = kwargs.get(CONF_POWER_MODE)
     freq = kwargs.get(CONF_FREQUENCY)
 
     for pricing in pricings.values():
         name = pricing[CONF_PRICING_NAME]
-        statistic_id = f"{DOMAIN}:{pdl}_{power_mode}_{name}".lower()
+        statistic_id = f"{DOMAIN}:" + slugify(f"{pdl}_{power_mode}_{name}".lower())
+        statistic_id_cost = f"{statistic_id}_cost"
         intervals = [
             (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
             for interval in pricing[CONF_PRICING_INTERVALS].values()
         ]
-        price = (
-            pricing[tempo_day]
-            if tempo_day and pricing.get(tempo_day)
-            else pricing[CONF_PRICING_COST]
-        )
 
-        _LOGGER.debug("%s stat", statistic_id)
+        _LOGGER.debug("Static Id: %s", statistic_id)
 
         # Fetch last information in database
         last_stats = await get_instance(hass).async_add_executor_job(
             get_last_statistics, hass, 1, statistic_id, True, "sum"
         )
+        last_stats_cost = await get_instance(hass).async_add_executor_job(
+            get_last_statistics, hass, 1, statistic_id_cost, True, "sum"
+        )
 
         # Fetch last sum in database
         summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
+        sumcost = 0 if not last_stats else last_stats_cost[statistic_id_cost][0]["sum"]
 
         # Fetch last time in database
         last_stats_time = (
@@ -227,9 +230,7 @@ async def async_statistics(
             cumsum=summary,
         )
 
-        datas_collected = analytics.set_price(datas_collected, price, True)
-        _LOGGER.debug(datas_collected)
-
+        # Fill sensor value
         if sum_value := analytics.get_last_value(datas_collected, "date", "sum_value"):
             summary = sum_value
 
@@ -244,11 +245,23 @@ async def async_statistics(
                     start=datas["date"], state=datas["value"], sum=datas["sum_value"]
                 )
             )
-            costs.append(
-                StatisticData(
-                    start=datas["date"], state=datas["price"], sum=datas["sum_price"]
-                )
-            )
+
+            # Compute princing
+            if tempo:
+                cur_stats_date = datas["date"].strftime("%Y-%m-%d")
+                if tempo_day := tempo.get(cur_stats_date):
+                    price = pricing.get(tempo_day, DEFAULT_CC_PRICE)
+                else:
+                    price = DEFAULT_CC_PRICE
+            else:
+                price = pricing.get(CONF_PRICING_COST, DEFAULT_CC_PRICE)
+
+            if price:
+                datas["cost"] = datas["value"] * price
+                sumcost = sumcost + datas["cost"]
+                costs.append(StatisticData(start=datas["date"], state=datas["cost"], sum=sumcost))
+            else:
+                _LOGGER.warn("Price not found ,compute cost not possible")
 
         if stats and costs:
             _LOGGER.debug("Add %s stat in table", name)
