@@ -112,7 +112,7 @@ async def async_statistics(hass: HomeAssistant, datas_collected, rules: list = N
         last_stats_time = (
             None
             if not last_stats
-            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"])
+            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"]).replace(tzinfo=dt_util.UTC)
         )
 
         ref_date = None
