@@ -41,6 +41,7 @@ clear_datas:
   fields:
     statistic_id:
       name: Statistic Id
+      description: Set statistic_id (found in developer tool menu , statistics)
       required: true
       selector:
         text:
