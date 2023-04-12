@@ -1,12 +1,12 @@
 {
+  "domain": "enedis",
+  "name": "Enedis",  
   "codeowners": ["@cyr-ius"],
   "config_flow": true,
   "dependencies": ["recorder"],
   "documentation": "https://github.com/cyr-ius/hass-enedis",
-  "domain": "enedis",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
-  "name": "Enedis",
   "requirements": ["enedisgatewaypy==1.3"],
   "version": "2.4.0"
 }
